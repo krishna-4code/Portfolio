@@ -39,10 +39,9 @@ export default function ScrollyCanvas() {
     offset: ["start start", "end end"],
   });
 
-  // Smooth / ease the raw scroll value so the video playhead (and text
-  // overlays) glide between frames instead of jumping with every scroll pixel.
-  // A spring also gives a subtle trailing effect that feels cinematic and is
-  // dramatically smoother than directly mapping raw scroll to video seeks.
+  // Smooth / ease the raw scroll value for the DECORATIVE layers (text overlay
+  // + vignette) so they glide rather than jump. The video playhead deliberately
+  // does NOT use this spring — it tracks raw scroll for lockstep concurrency.
   const smoothProgress = useSpring(scrollYProgress, {
     stiffness: 120,
     damping: 30,
@@ -150,10 +149,14 @@ export default function ScrollyCanvas() {
   }, []);
 
   // ─── Scroll-linked playhead updates ─────────────────────────────────────
+  // The video tracks the RAW scroll progress so it plays in lockstep with the
+  // user's scroll. Lenis already smooths the wheel/touch input, so layering the
+  // spring on top here would add visible lag. Only the text overlay (below)
+  // keeps the spring — lag looks elegant there, not on the video position.
   useEffect(() => {
     let rafRef: number | null = null;
 
-    const unsubscribe = smoothProgress.on("change", (progress) => {
+    const unsubscribe = scrollYProgress.on("change", (progress) => {
       if (rafRef !== null) cancelAnimationFrame(rafRef);
       rafRef = requestAnimationFrame(() => seekToProgress(progress));
     });
@@ -162,7 +165,7 @@ export default function ScrollyCanvas() {
       unsubscribe();
       if (rafRef !== null) cancelAnimationFrame(rafRef);
     };
-  }, [smoothProgress, seekToProgress]);
+  }, [scrollYProgress, seekToProgress]);
 
   // ─────────────────────────────────────────────────────────────────────────
   return (

@@ -5,7 +5,7 @@
 
 export const SITE = {
   name: "Krishna",
-  email: "hello@krishna.dev",
+  email: "krishnachoudhary131326@gmail.com",
   githubUsername: "krishna-4code",
 } as const;
 
@@ -24,7 +24,7 @@ export const SOCIAL_LINKS = [
   },
   {
     label: "LinkedIn",
-    href: "https://www.linkedin.com/in/",
+    href: "https://www.linkedin.com/in/krishnachoudharyy/",
     external: true,
     icon: "IN",
   },
