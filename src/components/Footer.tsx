@@ -2,13 +2,7 @@
 
 import { motion, useInView } from "framer-motion";
 import { useRef } from "react";
-
-const SOCIAL_LINKS = [
-  { label: "GitHub",   href: "https://github.com" },
-  { label: "Twitter",  href: "https://twitter.com" },
-  { label: "LinkedIn", href: "https://linkedin.com" },
-  { label: "Dribbble", href: "https://dribbble.com" },
-];
+import { SOCIAL_LINKS, SITE } from "@/lib/site";
 
 export default function Footer() {
   const ref = useRef<HTMLElement>(null);
@@ -17,7 +11,6 @@ export default function Footer() {
   return (
     <footer
       ref={ref}
-      id="contact"
       className="relative bg-[#0d0d0d] overflow-hidden"
     >
       {/* Top border */}
@@ -83,7 +76,7 @@ export default function Footer() {
 
         {/* CTA */}
         <motion.a
-          href="mailto:hello@yourname.dev"
+          href={`mailto:${SITE.email}`}
           initial={{ opacity: 0, y: 20 }}
           animate={inView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.8, delay: 0.2, ease: [0.25, 0.1, 0, 1] }}
@@ -95,7 +88,7 @@ export default function Footer() {
             className="font-display font-bold text-2xl md:text-3xl text-white/50
                        group-hover:text-[#e8ff3e] transition-colors duration-300"
           >
-hello@krishna.dev
+{SITE.email}
           </span>
           <motion.span
             animate={{ x: [0, 8, 0] }}
@@ -118,17 +111,18 @@ hello@krishna.dev
 
           {/* Copyright */}
           <span className="font-mono text-xs text-white/15 order-last md:order-none">
-            © 2025 Krishna. Crafted with intention.
+            © {new Date().getFullYear()} Krishna. Crafted with intention.
           </span>
 
           {/* Social links */}
           <div className="flex gap-6">
-            {SOCIAL_LINKS.map(({ label, href }) => (
+            {SOCIAL_LINKS.map(({ label, href, external }) => (
               <a
                 key={label}
                 href={href}
-                target="_blank"
-                rel="noopener noreferrer"
+                {...(external
+                  ? { target: "_blank", rel: "noopener noreferrer" }
+                  : {})}
                 className="font-mono text-xs text-white/25 hover:text-white/70
                            transition-colors duration-200"
               >

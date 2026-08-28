@@ -1,13 +1,15 @@
 "use client";
 
 import { motion, useInView } from "framer-motion";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { fetchGitHubRepos, GitHubRepo } from "@/lib/github";
 
 // ─────────────────────────────────────────────
-// Types & Data
+// Types
 // ─────────────────────────────────────────────
 interface Project {
   id: number;
+  name: string;
   title: string;
   category: string;
   description: string;
@@ -19,9 +21,11 @@ interface Project {
   link?: string;
 }
 
-const PROJECTS: Project[] = [
-  {
-    id: 1,
+// Curated metadata keyed by GitHub repo name. When a repo fetched from GitHub
+// matches one of these keys we use this richer presentation (description,
+// tags, accent colors); otherwise we fall back to the raw repo data.
+const CURATED: Record<string, Omit<Project, "id" | "name">> = {
+  "eco-sankalan": {
     title: "EcoSankalan",
     category: "Full-Stack · PWA · AI",
     description:
@@ -32,8 +36,7 @@ const PROJECTS: Project[] = [
     accentColor: "#4ade80",
     featured: true,
   },
-  {
-    id: 2,
+  "spatial-interface": {
     title: "Spatial Interface",
     category: "Interaction Design · WebGL",
     description:
@@ -44,8 +47,7 @@ const PROJECTS: Project[] = [
     accentColor: "#e8ff3e",
     featured: true,
   },
-  {
-    id: 3,
+  "neural-commerce": {
     title: "Neural Commerce",
     category: "E-Commerce · AI",
     description:
@@ -55,8 +57,7 @@ const PROJECTS: Project[] = [
     glowColor: "#f87171",
     accentColor: "#f87171",
   },
-  {
-    id: 4,
+  "campus-event-manager": {
     title: "Campus Event Manager",
     category: "Full-Stack · System Design",
     description:
@@ -66,7 +67,40 @@ const PROJECTS: Project[] = [
     glowColor: "#a78bfa",
     accentColor: "#a78bfa",
   },
-];
+};
+
+// Palette assigned to repos without curated metadata (cycled through).
+const FALLBACK_COLORS = ["#e8ff3e", "#4ade80", "#f87171", "#a78bfa", "#38bdf8"];
+
+function titleCase(name: string): string {
+  return name
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// Build the final project list: merge GitHub data with curated metadata.
+function buildProjects(repos: GitHubRepo[]): Project[] {
+  return repos.map((repo, i) => {
+    const curated = CURATED[repo.name];
+    const accent = FALLBACK_COLORS[i % FALLBACK_COLORS.length];
+    const year = repo.created_at ? repo.created_at.slice(0, 4) : "";
+    return {
+      id: repo.id,
+      name: repo.name,
+      title: curated?.title ?? titleCase(repo.name),
+      category: curated?.category ?? (repo.language ?? "Open Source"),
+      description:
+        curated?.description ??
+        (repo.description || "An open-source project on GitHub."),
+      tags: curated?.tags ?? (repo.language ? [repo.language] : []),
+      year: curated?.year ?? year,
+      glowColor: curated?.glowColor ?? accent,
+      accentColor: curated?.accentColor ?? accent,
+      featured: curated?.featured,
+      link: repo.html_url,
+    };
+  });
+}
 
 // ─────────────────────────────────────────────
 // Single Card
@@ -162,13 +196,18 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
       </div>
 
       {/* CTA */}
-      <div className="relative z-10 flex items-center gap-2">
+      <a
+        href={project.link}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="relative z-10 inline-flex items-center gap-2"
+      >
         <motion.span
           className="font-mono text-xs tracking-widest uppercase"
           animate={{ color: hovered ? project.accentColor : "rgba(255,255,255,0.25)" }}
           transition={{ duration: 0.3 }}
         >
-          View Case Study
+          View on GitHub
         </motion.span>
         <motion.span
           animate={{ x: hovered ? 6 : 0, opacity: hovered ? 1 : 0.3 }}
@@ -178,7 +217,7 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
         >
           →
         </motion.span>
-      </div>
+      </a>
 
       {/* Bottom accent line */}
       <motion.div
@@ -226,6 +265,23 @@ function SectionHeader() {
 // Main export
 // ─────────────────────────────────────────────
 export default function Projects() {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchGitHubRepos()
+      .then((repos) => {
+        if (!cancelled) setProjects(buildProjects(repos));
+      })
+      .catch(() => {
+        if (!cancelled) setError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <section
       id="work"
@@ -243,11 +299,19 @@ export default function Projects() {
       <div className="max-w-7xl mx-auto">
         <SectionHeader />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 lg:gap-6">
-          {PROJECTS.map((project, i) => (
-            <ProjectCard key={project.id} project={project} index={i} />
-          ))}
-        </div>
+        {projects.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 lg:gap-6">
+            {projects.map((project, i) => (
+              <ProjectCard key={project.id} project={project} index={i} />
+            ))}
+          </div>
+        ) : (
+          <p className="text-white/30 font-mono text-xs tracking-[0.2em] uppercase">
+            {error
+              ? "Couldn't load projects from GitHub right now."
+              : "Loading projects from GitHub…"}
+          </p>
+        )}
       </div>
     </section>
   );
