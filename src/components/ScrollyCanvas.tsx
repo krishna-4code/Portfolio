@@ -1,36 +1,51 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useScroll, useSpring, useTransform, motion } from "framer-motion";
 import Overlay from "./Overlay";
 
 // ─────────────────────────────────────────────
 // CONFIG — adjust to taste
 // ─────────────────────────────────────────────
-const VIDEO_PATH = "/hero.mp4";
+// Both clips are encoded with `keyint=1` (every frame a keyframe) so that
+// seeking to any exact position is a cheap, independent decode — this keeps
+// direction switches smooth and keeps the standby video cheap to pre-sync.
+const FORWARD_PATH = "/hero-fwd-key.mp4";   // all-keyframe forward clip
+const REVERSE_PATH = "/hero-reverse.mp4";   // pre-reversed, all-keyframe copy
 const SCROLL_HEIGHT = "500vh"; // cinematic scroll distance
 
-// hero.mp4 is 1280×720 H.264, 240 frames at 24fps (~10s).
-const FPS = 24;
-const FRAME_COUNT = 240;
+// Rate-based playback tuning knobs:
+const MIN_RATE = 0.1;        // slowest forward playback rate
+const MAX_RATE = 4;          // fastest forward catch-up rate
+const BASE_RATE = 1;         // "neutral" rate when drift is small
+const CORRECTION_GAIN = 2.5; // how aggressively drift gets pulled back
+const DRIFT_EPSILON = 0.02;  // seconds — below this, treat as "in sync"
+const SWITCH_HYSTERESIS = 0.005; // prevents flicker when diff hovers near 0
+const STANDBY_SYNC_EVERY = 3;    // frames between standby re-syncs (throttle)
 
 /**
  * Main component.
  *
- * Renders hero.mp4 directly as a `<video>` and scrubs its playhead from the
- * beginning to the end in sync with the user's scroll progress (scroll-based
- * animation using frames). This is far more efficient than preloading the
- * ~90MB of PNG stills: the browser decodes the 3.6MB video on the GPU, so we
- * skip canvas drawing and image preloading entirely while keeping the exact
- * same cinematic section.
+ * Dual-clip rate-based scrub model. HTML5 video has no native reverse-decode,
+ * so instead of positional `currentTime` stepping (which stutters on every
+ * seek), we pre-reverse a copy of the clip and play BOTH directions through
+ * the browser's native forward-playback pipeline:
+ *   - Scrolling down  → plays the forward clip with `playbackRate` control.
+ *   - Scrolling up    → plays the reversed clip forward (backward in the
+ *                       original timeline) with the same logic.
+ * Both clips are encoded with `keyint=1` (all keyframes) so any exact seek is
+ * an independent, cheap decode. The inactive clip is continuously parked at
+ * its matching timestamp while paused, so a direction switch is just a short
+ * opacity crossfade over two already-aligned, decoded frames — no visible seek
+ * stutter. The decorative text overlay keeps the spring-smoothed progress.
  */
 export default function ScrollyCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const durationRef = useRef(0);
-  const lastFrameRef = useRef(-1);
-  const isMountedRef = useRef(true);
-
+  const forwardRef = useRef<HTMLVideoElement>(null);
+  const reverseRef = useRef<HTMLVideoElement>(null);
+  const rafRef = useRef<number>();
+  const modeRef = useRef<"forward" | "backward">("forward");
+  const [activeMode, setActiveMode] = useState<"forward" | "backward">("forward");
   const [isReady, setIsReady] = useState(false);
   const [loadPct, setLoadPct] = useState(0);
 
@@ -51,41 +66,108 @@ export default function ScrollyCanvas() {
   // Subtle vignette opacity tied to scroll
   const vignetteOpacity = useTransform(smoothProgress, [0, 0.1, 0.9, 1], [0.7, 0.3, 0.3, 0.8]);
 
-  // ─── Seek the video to the frame matching scroll progress ───────────────
-  // We quantize to discrete frame indices (frame / FPS) and only seek when the
-  // target frame actually changes. We also drop a seek while the decoder is
-  // already seeking — the next rAF will pick up the correct target — so fast
-  // scrolls don't overload the decoder. Seeking a video is expensive (the
-  // decoder must jump to a keyframe and decode forward), so this removes most
-  // of the lag.
-  const seekToProgress = useCallback(
-    (progress: number) => {
-      const video = videoRef.current;
-      if (!video || !durationRef.current) return;
-
-      // Skip while the decoder is still busy so it never queues up back-to-back
-      // expensive seeks. The next tick re-seeks to the true target from progress.
-      if (video.seeking) return;
-
-      const clamped = Math.min(Math.max(progress, 0), 1);
-      let frame = Math.round(clamped * (FRAME_COUNT - 1));
-      frame = Math.min(Math.max(frame, 0), FRAME_COUNT - 1);
-
-      if (frame === lastFrameRef.current) return;
-      lastFrameRef.current = frame;
-
-      const targetTime = Math.min(frame / FPS, durationRef.current);
-      if (Math.abs(video.currentTime - targetTime) > 1 / FPS / 2) {
-        video.currentTime = targetTime;
+  // Rate-based native-forward tracking — reused for both clips.
+  const trackForward = (video: HTMLVideoElement, targetTime: number) => {
+    const diff = targetTime - video.currentTime;
+    if (Math.abs(diff) < DRIFT_EPSILON) {
+      if (!video.paused) video.pause();
+      return;
+    }
+    if (diff > 0) {
+      const rate = Math.min(
+        Math.max(BASE_RATE + diff * CORRECTION_GAIN, MIN_RATE),
+        MAX_RATE
+      );
+      video.playbackRate = rate;
+      if (video.paused && !video.seeking) {
+        video.play().catch(() => {}); // ignore autoplay-policy rejections
       }
-    },
-    []
-  );
+    } else {
+      // Fell ahead of target (e.g. right after a direction-switch seek) — pause
+      // and let the target catch up.
+      if (!video.paused) video.pause();
+    }
+  };
 
-  // ─── Force the browser to start loading the video and wire events ───────
+  // ─── Rate-based playhead control ────────────────────────────────────────
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
+    const fwd = forwardRef.current;
+    const rev = reverseRef.current;
+    if (!fwd || !rev) return;
+
+    let frameCount = 0;
+
+    const tick = () => {
+      const duration = fwd.duration;
+      if (!duration || isNaN(duration)) {
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      const progress = Math.min(Math.max(scrollYProgress.get(), 0), 1);
+      const expectedTime = progress * duration;
+      const currentActiveTime =
+        modeRef.current === "forward" ? fwd.currentTime : duration - rev.currentTime;
+      const diff = expectedTime - currentActiveTime;
+
+      // Direction switch — with hysteresis so tiny scroll jitter doesn't flip constantly
+      const wantsMode: "forward" | "backward" =
+        diff > SWITCH_HYSTERESIS
+          ? "forward"
+          : diff < -SWITCH_HYSTERESIS
+          ? "backward"
+          : modeRef.current;
+
+      if (wantsMode !== modeRef.current) {
+        modeRef.current = wantsMode;
+        setActiveMode(wantsMode);
+        // The standby was continuously pre-synced below, so both clips are
+        // already at the matching timestamp — just pause the outgoing one.
+        if (wantsMode === "forward") {
+          rev.pause();
+        } else {
+          fwd.pause();
+        }
+      }
+
+      if (modeRef.current === "forward") {
+        trackForward(fwd, expectedTime);
+      } else {
+        trackForward(rev, duration - expectedTime);
+      }
+
+      // ── Keep the INACTIVE (standby) video parked at its mirror position ──
+      // Both clips are all-keyframe, so setting currentTime while paused is a
+      // cheap independent frame decode. Doing this continuously means a
+      // direction switch is just an opacity flip over two already-aligned,
+      // decoded frames — no visible seek. Throttled to a few frames apart.
+      if (++frameCount % STANDBY_SYNC_EVERY === 0) {
+        const standbyTarget =
+          modeRef.current === "forward"
+            ? duration - expectedTime // rev (reverse timeline)
+            : expectedTime;           // fwd
+        const standby = modeRef.current === "forward" ? rev : fwd;
+        if (standby.paused && !standby.seeking) {
+          const clamped = Math.min(Math.max(standbyTarget, 0), duration);
+          if (Math.abs(standby.currentTime - clamped) > 1 / 24 / 2) {
+            standby.currentTime = clamped;
+          }
+        }
+      }
+
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [scrollYProgress]);
+
+  // ─── Force the browser to start loading the videos and wire events ──────
+  useEffect(() => {
+    const fwd = forwardRef.current;
+    if (!fwd) return;
 
     let revealed = false;
     const MIN_LOADER_MS = 900; // ensure the loader is visible for a beat
@@ -96,91 +178,96 @@ export default function ScrollyCanvas() {
       revealed = true;
       const elapsed = performance.now() - startTime;
       const wait = Math.max(0, MIN_LOADER_MS - elapsed);
-      window.setTimeout(() => {
-        if (isMountedRef.current) setIsReady(true);
-      }, wait);
+      window.setTimeout(() => setIsReady(true), wait);
     };
 
     // Drive the bar from real buffered progress so it fills meaningfully
     // instead of jumping to 100% the instant metadata loads.
     const onProgress = () => {
-      if (!isMountedRef.current || revealed) return;
-      if (video.buffered.length > 0 && video.duration) {
-        const buffered = video.buffered.end(video.buffered.length - 1);
-        setLoadPct(Math.min(buffered / video.duration, 1));
+      if (revealed) return;
+      if (fwd.buffered.length > 0 && fwd.duration) {
+        const buffered = fwd.buffered.end(fwd.buffered.length - 1);
+        setLoadPct(Math.min(buffered / fwd.duration, 1));
       }
     };
 
     const onReady = () => {
-      if (!durationRef.current) durationRef.current = video.duration || 0;
       // Show the very first frame as soon as it can be decoded.
-      if (durationRef.current) video.currentTime = 0;
+      if (fwd.duration) fwd.currentTime = 0;
       reveal();
     };
 
     // Reveal once enough of the clip is buffered (or it can play through).
     const onBufferedEnough = () => {
-      if (video.buffered.length > 0 && video.duration) {
-        const buffered = video.buffered.end(video.buffered.length - 1);
-        setLoadPct(Math.min(buffered / video.duration, 1));
-        if (buffered / video.duration >= 0.9 || video.readyState >= 3) {
+      if (fwd.buffered.length > 0 && fwd.duration) {
+        const buffered = fwd.buffered.end(fwd.buffered.length - 1);
+        setLoadPct(Math.min(buffered / fwd.duration, 1));
+        if (buffered / fwd.duration >= 0.9 || fwd.readyState >= 3) {
           reveal();
         }
       }
     };
 
-    video.addEventListener("loadedmetadata", onReady, { once: true });
-    video.addEventListener("canplaythrough", onBufferedEnough, { once: true });
-    video.addEventListener("progress", onProgress, { passive: true });
+    fwd.addEventListener("loadedmetadata", onReady, { once: true });
+    fwd.addEventListener("canplaythrough", onBufferedEnough, { once: true });
+    fwd.addEventListener("progress", onProgress, { passive: true });
 
     // Explicitly start fetching — required for hidden/paused videos on some
     // browsers so `loadedmetadata`/`progress` reliably fire.
-    video.load();
+    fwd.load();
 
     // Safety net: never trap the user on the loading screen.
     const fallback = window.setTimeout(reveal, 8000);
 
     return () => {
       window.clearTimeout(fallback);
-      video.removeEventListener("loadedmetadata", onReady);
-      video.removeEventListener("canplaythrough", onBufferedEnough);
-      video.removeEventListener("progress", onProgress);
+      fwd.removeEventListener("loadedmetadata", onReady);
+      fwd.removeEventListener("canplaythrough", onBufferedEnough);
+      fwd.removeEventListener("progress", onProgress);
     };
   }, []);
-
-  // ─── Scroll-linked playhead updates ─────────────────────────────────────
-  // The video tracks the RAW scroll progress so it plays in lockstep with the
-  // user's scroll. Lenis already smooths the wheel/touch input, so layering the
-  // spring on top here would add visible lag. Only the text overlay (below)
-  // keeps the spring — lag looks elegant there, not on the video position.
-  useEffect(() => {
-    let rafRef: number | null = null;
-
-    const unsubscribe = scrollYProgress.on("change", (progress) => {
-      if (rafRef !== null) cancelAnimationFrame(rafRef);
-      rafRef = requestAnimationFrame(() => seekToProgress(progress));
-    });
-
-    return () => {
-      unsubscribe();
-      if (rafRef !== null) cancelAnimationFrame(rafRef);
-    };
-  }, [scrollYProgress, seekToProgress]);
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <>
       {/* ── Pinned hero layer — stays fixed on screen behind everything ── */}
       <div className="fixed inset-0 z-0 overflow-hidden">
-        {/* Video layer — scroll-scrubbed hero */}
+        {/* Forward clip — scrub-ready */}
         <video
-          ref={videoRef}
+          ref={forwardRef}
           aria-hidden="true"
           muted
           playsInline
           preload="auto"
-          src={VIDEO_PATH}
-          className="absolute inset-0 w-full h-full object-cover"
+          src={FORWARD_PATH}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            opacity: activeMode === "forward" ? 1 : 0,
+            transition: "opacity 120ms linear",
+          }}
+        ></video>
+
+        {/* Reverse clip — plays forward to scrub backward */}
+        <video
+          ref={reverseRef}
+          aria-hidden="true"
+          muted
+          playsInline
+          preload="auto"
+          src={REVERSE_PATH}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            opacity: activeMode === "backward" ? 1 : 0,
+            transition: "opacity 120ms linear",
+          }}
         ></video>
 
         {/* Vignette */}
