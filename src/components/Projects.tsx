@@ -79,8 +79,7 @@ function titleCase(name: string): string {
 }
 
 // Build the final project list: merge GitHub data with curated metadata.
-function buildProjects(repos: GitHubRepo[]): Project[] {
-  return repos.map((repo, i) => {
+function buildProjects(repos: GitHubRepo[]): Project[] {  return repos.map((repo, i) => {
     const curated = CURATED[repo.name];
     const accent = FALLBACK_COLORS[i % FALLBACK_COLORS.length];
     const year = repo.created_at ? repo.created_at.slice(0, 4) : "";
@@ -106,6 +105,7 @@ function buildProjects(repos: GitHubRepo[]): Project[] {
 // Single Card
 // ─────────────────────────────────────────────
 function ProjectCard({ project, index }: { project: Project; index: number }) {
+
   const [hovered, setHovered] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const isInView = useInView(cardRef, { once: true, margin: "-80px" });
@@ -285,7 +285,7 @@ export default function Projects() {
   return (
     <section
       id="work"
-      className="relative bg-[#0d0d0d] py-28 md:py-40 px-6 md:px-14 lg:px-20"
+      className="relative bg-[#0d0d0d] py-28 md:py-40"
     >
       {/* Subtle top divider */}
       <div
@@ -296,7 +296,7 @@ export default function Projects() {
         }}
       />
 
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-7xl mx-auto px-6 md:px-14 lg:px-20">
         <SectionHeader />
 
         {projects.length > 0 ? (
