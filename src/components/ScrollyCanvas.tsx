@@ -12,6 +12,7 @@ const TOTAL_FRAMES = 240;
 const SCROLL_HEIGHT = "500vh"; // Cinematic scroll distance
 const FRAME_PREFIX = "/hero-frames/frame_";
 const FRAME_EXT = ".webp";
+const VIDEO_BG_COLOR = "#08070a";
 
 /**
  * Generates the zero-padded file path for a given frame index (0..239).
@@ -92,14 +93,18 @@ export default function ScrollyCanvas() {
       const cW = canvas.width;
       const cH = canvas.height;
 
-      // Maintain aspect-ratio cover
-      const iW = imgA.naturalWidth || 1280;
+      // Fill canvas backing with video background color to fill left and right leftover sections
+      ctx.fillStyle = VIDEO_BG_COLOR;
+      ctx.fillRect(0, 0, cW, cH);
+
+      // Scale 720x720 square frame to fill the full viewport height, center horizontally
+      const iW = imgA.naturalWidth || 720;
       const iH = imgA.naturalHeight || 720;
-      const scale = Math.max(cW / iW, cH / iH);
+      const scale = cH / iH;
       const dW = iW * scale;
-      const dH = iH * scale;
+      const dH = cH;
       const dX = (cW - dW) * 0.5;
-      const dY = (cH - dH) * 0.5;
+      const dY = 0;
 
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
@@ -117,6 +122,31 @@ export default function ScrollyCanvas() {
         }
       }
       ctx.globalAlpha = 1;
+
+      // On wider screens (desktop/laptop), feather the left and right frame
+      // borders to dissolve seamlessly into VIDEO_BG_COLOR
+      if (dX > 0) {
+        const featherWidth = Math.min(48, dW * 0.06);
+
+        // Left edge feathering
+        const gradLeft = ctx.createLinearGradient(dX, 0, dX + featherWidth, 0);
+        gradLeft.addColorStop(0, VIDEO_BG_COLOR);
+        gradLeft.addColorStop(1, "rgba(8, 7, 10, 0)");
+        ctx.fillStyle = gradLeft;
+        ctx.fillRect(dX, 0, featherWidth, dH);
+
+        // Right edge feathering
+        const gradRight = ctx.createLinearGradient(
+          dX + dW - featherWidth,
+          0,
+          dX + dW,
+          0
+        );
+        gradRight.addColorStop(0, "rgba(8, 7, 10, 0)");
+        gradRight.addColorStop(1, VIDEO_BG_COLOR);
+        ctx.fillStyle = gradRight;
+        ctx.fillRect(dX + dW - featherWidth, 0, featherWidth, dH);
+      }
     },
     [getNearestImage]
   );
@@ -322,11 +352,11 @@ export default function ScrollyCanvas() {
   return (
     <>
       {/* ── Fixed pinned canvas hero layer ── */}
-      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none bg-[#08070a]">
         <canvas
           ref={canvasRef}
           aria-hidden="true"
-          className="absolute inset-0 w-full h-full object-cover"
+          className="absolute inset-0 w-full h-full"
         />
 
         {/* Radial vignette */}
@@ -339,7 +369,7 @@ export default function ScrollyCanvas() {
             className="absolute inset-0"
             style={{
               background:
-                "radial-gradient(ellipse at center, transparent 40%, rgba(13,13,13,0.95) 100%)",
+                "radial-gradient(ellipse at center, transparent 40%, rgba(8,7,10,0.95) 100%)",
             }}
           />
         </motion.div>
@@ -351,7 +381,7 @@ export default function ScrollyCanvas() {
 
         {/* Sleek branded loading screen */}
         {!isReady && (
-          <div className="absolute inset-0 z-50 bg-[#0d0d0d] flex flex-col items-center justify-center gap-6 pointer-events-auto">
+          <div className="absolute inset-0 z-50 bg-[#08070a] flex flex-col items-center justify-center gap-6 pointer-events-auto">
             {/* Logo mark */}
             <div className="font-display text-3xl font-bold text-white tracking-tight">
               Krishna<span className="text-[#e8ff3e]">.</span>

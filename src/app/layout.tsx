@@ -25,11 +25,11 @@ const dmMono = DM_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Krishna — Creative Developer",
+  title: "Krishna",
   description:
     "Portfolio of a creative developer building immersive digital experiences at the intersection of design and engineering.",
   openGraph: {
-    title: "Krishna — Creative Developer",
+    title: "Krishna",
     description: "Building immersive digital experiences.",
     type: "website",
   },

@@ -38,21 +38,22 @@ code. Don't fix with `--fix` silently; confirm rules match repo style.
 
 ## Hero animation (ScrollyCanvas.tsx)
 
-- Lenis-driven HTML5 `<canvas>` scrollytelling using 240 extracted WebP frames of `hero.mp4`:
-  - `public/hero-frames/frame_0001.webp` through `frame_0240.webp` (~10MB total).
+- Lenis-driven HTML5 `<canvas>` scrollytelling using 240 extracted WebP frames of `heronew.mp4`:
+  - `public/hero-frames/frame_0001.webp` through `frame_0240.webp` (~3.3MB total, 720x720 square, content fills entire viewport height).
 - High-performance features for maximum smoothness:
   - **Lenis synchronization**: Directly hooks into Lenis's smoothed virtual scroll via `useLenis`.
   - **Off-thread decoding**: Images are decoded off the main thread with `img.decode()` before rendering, preventing frame drops.
   - **Sub-frame crossfade blending**: Temporal interpolation between adjacent frames eliminates discrete frame stepping, giving liquid 60/120fps motion.
   - **Prioritized loading**: Frame 0 decodes first for instant paint, followed by distributed keyframes, then concurrent batch workers.
   - **Nearest-frame fallback**: If a frame is loading during rapid scrubbing, the nearest loaded frame is rendered instantly, preventing blank flashes.
+  - **Seamless background filling**: The canvas backing and surrounding hero container are filled with `#08070a` (the video's exact background color) with soft edge feathering on widescreen/desktop displays.
 - `Overlay.tsx` renders the text beats wired to a **spring-smoothed** progress.
 
 ### Regenerating frames (requires ffmpeg)
 
 ```bash
-# Extract 240 high-quality WebP frames at 24fps from hero.mp4:
-ffmpeg -i public/hero.mp4 -c:v libwebp -quality 80 -preset photo public/hero-frames/frame_%04d.webp -y
+# Extract 240 high-quality WebP frames at 24fps as 720x720 square from heronew.mp4:
+ffmpeg -i heronew.mp4 -vf "crop=720:720:280:0" -c:v libwebp -quality 80 -preset photo public/hero-frames/frame_%04d.webp -y
 ```
 
 ## Projects (Projects.tsx)
