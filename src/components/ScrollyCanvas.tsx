@@ -1,158 +1,214 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useScroll, useSpring, useTransform, motion } from "framer-motion";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useMotionValue, useSpring, useTransform, motion } from "framer-motion";
+import { useLenis } from "lenis/react";
 import Overlay from "./Overlay";
 
 // ─────────────────────────────────────────────
-// CONFIG — adjust to taste
+// CONFIG
 // ─────────────────────────────────────────────
-// Both clips are encoded with `keyint=1` (every frame a keyframe) so that
-// seeking to any exact position is a cheap, independent decode — this keeps
-// direction switches smooth and keeps the standby video cheap to pre-sync.
-const FORWARD_PATH = "/hero-fwd-key.mp4";   // all-keyframe forward clip
-const REVERSE_PATH = "/hero-reverse.mp4";   // pre-reversed, all-keyframe copy
-const SCROLL_HEIGHT = "500vh"; // cinematic scroll distance
-
-// Rate-based playback tuning knobs:
-const MIN_RATE = 0.1;        // slowest forward playback rate
-const MAX_RATE = 4;          // fastest forward catch-up rate
-const BASE_RATE = 1;         // "neutral" rate when drift is small
-const CORRECTION_GAIN = 2.5; // how aggressively drift gets pulled back
-const DRIFT_EPSILON = 0.02;  // seconds — below this, treat as "in sync"
-const SWITCH_HYSTERESIS = 0.005; // prevents flicker when diff hovers near 0
-const STANDBY_SYNC_EVERY = 3;    // frames between standby re-syncs (throttle)
+const TOTAL_FRAMES = 240;
+const SCROLL_HEIGHT = "500vh"; // Cinematic scroll distance
+const FRAME_PREFIX = "/hero-frames/frame_";
+const FRAME_EXT = ".webp";
 
 /**
- * Main component.
- *
- * Dual-clip rate-based scrub model. HTML5 video has no native reverse-decode,
- * so instead of positional `currentTime` stepping (which stutters on every
- * seek), we pre-reverse a copy of the clip and play BOTH directions through
- * the browser's native forward-playback pipeline:
- *   - Scrolling down  → plays the forward clip with `playbackRate` control.
- *   - Scrolling up    → plays the reversed clip forward (backward in the
- *                       original timeline) with the same logic.
- * Both clips are encoded with `keyint=1` (all keyframes) so any exact seek is
- * an independent, cheap decode. The inactive clip is continuously parked at
- * its matching timestamp while paused, so a direction switch is just a short
- * opacity crossfade over two already-aligned, decoded frames — no visible seek
- * stutter. The decorative text overlay keeps the spring-smoothed progress.
+ * Generates the zero-padded file path for a given frame index (0..239).
+ * E.g., index 0 -> "/hero-frames/frame_0001.webp"
  */
+function getFramePath(index: number): string {
+  const num = String(index + 1).padStart(4, "0");
+  return `${FRAME_PREFIX}${num}${FRAME_EXT}`;
+}
+
 export default function ScrollyCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
-  const forwardRef = useRef<HTMLVideoElement>(null);
-  const reverseRef = useRef<HTMLVideoElement>(null);
-  const rafRef = useRef<number>();
-  const modeRef = useRef<"forward" | "backward">("forward");
-  const [activeMode, setActiveMode] = useState<"forward" | "backward">("forward");
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imagesRef = useRef<(HTMLImageElement | null)[]>(
+    new Array(TOTAL_FRAMES).fill(null)
+  );
+
   const [isReady, setIsReady] = useState(false);
   const [loadPct, setLoadPct] = useState(0);
 
-  const { scrollYProgress } = useScroll({
-    target: containerRef,
-    offset: ["start start", "end end"],
-  });
-
-  // Smooth / ease the raw scroll value for the DECORATIVE layers (text overlay
-  // + vignette) so they glide rather than jump. The video playhead deliberately
-  // does NOT use this spring — it tracks raw scroll for lockstep concurrency.
-  const smoothProgress = useSpring(scrollYProgress, {
+  // Motion values to synchronize Overlay beats and vignette with Lenis scroll
+  const rawProgress = useMotionValue(0);
+  const smoothProgress = useSpring(rawProgress, {
     stiffness: 120,
     damping: 30,
     mass: 0.6,
   });
 
-  // Subtle vignette opacity tied to scroll
-  const vignetteOpacity = useTransform(smoothProgress, [0, 0.1, 0.9, 1], [0.7, 0.3, 0.3, 0.8]);
+  const vignetteOpacity = useTransform(
+    smoothProgress,
+    [0, 0.1, 0.9, 1],
+    [0.7, 0.3, 0.3, 0.8]
+  );
 
-  // Rate-based native-forward tracking — reused for both clips.
-  const trackForward = (video: HTMLVideoElement, targetTime: number) => {
-    const diff = targetTime - video.currentTime;
-    if (Math.abs(diff) < DRIFT_EPSILON) {
-      if (!video.paused) video.pause();
-      return;
+  // Target and current progress references for 120Hz RAF render loop
+  const targetProgressRef = useRef(0);
+  const currentProgressRef = useRef(0);
+  const rafRef = useRef<number>();
+
+  /**
+   * Helper to retrieve the nearest already-loaded frame if the exact requested
+   * frame index hasn't completed loading yet. Guarantees zero blank flashes.
+   */
+  const getNearestImage = useCallback((index: number): HTMLImageElement | null => {
+    const images = imagesRef.current;
+    if (images[index]) return images[index];
+
+    for (let offset = 1; offset < TOTAL_FRAMES; offset++) {
+      const left = index - offset;
+      if (left >= 0 && images[left]) return images[left];
+      const right = index + offset;
+      if (right < TOTAL_FRAMES && images[right]) return images[right];
     }
-    if (diff > 0) {
-      const rate = Math.min(
-        Math.max(BASE_RATE + diff * CORRECTION_GAIN, MIN_RATE),
-        MAX_RATE
-      );
-      video.playbackRate = rate;
-      if (video.paused && !video.seeking) {
-        video.play().catch(() => {}); // ignore autoplay-policy rejections
+    return null;
+  }, []);
+
+  /**
+   * Renders the current frame onto the canvas.
+   * Uses dual-frame sub-frame interpolation (crossfading adjacent frames)
+   * to eliminate discrete frame stepping, transforming 24fps video frames
+   * into liquid, buttery smooth 60fps/120fps motion.
+   */
+  const renderFrame = useCallback(
+    (progress: number) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d", { alpha: false });
+      if (!ctx) return;
+
+      const exactFrame = progress * (TOTAL_FRAMES - 1);
+      const frameA = Math.floor(exactFrame);
+      const frameB = Math.min(frameA + 1, TOTAL_FRAMES - 1);
+      const blend = exactFrame - frameA;
+
+      const imgA = getNearestImage(frameA);
+      if (!imgA) return;
+
+      const cW = canvas.width;
+      const cH = canvas.height;
+
+      // Maintain aspect-ratio cover
+      const iW = imgA.naturalWidth || 1280;
+      const iH = imgA.naturalHeight || 720;
+      const scale = Math.max(cW / iW, cH / iH);
+      const dW = iW * scale;
+      const dH = iH * scale;
+      const dX = (cW - dW) * 0.5;
+      const dY = (cH - dH) * 0.5;
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+
+      // Draw primary base frame
+      ctx.globalAlpha = 1;
+      ctx.drawImage(imgA, dX, dY, dW, dH);
+
+      // Sub-frame crossfade blend with next frame
+      if (blend > 0.002 && frameB !== frameA) {
+        const imgB = getNearestImage(frameB);
+        if (imgB && imgB !== imgA) {
+          ctx.globalAlpha = blend;
+          ctx.drawImage(imgB, dX, dY, dW, dH);
+        }
       }
-    } else {
-      // Fell ahead of target (e.g. right after a direction-switch seek) — pause
-      // and let the target catch up.
-      if (!video.paused) video.pause();
+      ctx.globalAlpha = 1;
+    },
+    [getNearestImage]
+  );
+
+  /**
+   * Resize canvas backing store to match display size multiplied by devicePixelRatio.
+   */
+  const handleResize = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    const targetWidth = Math.round(width * dpr);
+    const targetHeight = Math.round(height * dpr);
+
+    if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
     }
-  };
 
-  // ─── Rate-based playhead control ────────────────────────────────────────
+    renderFrame(currentProgressRef.current);
+  }, [renderFrame]);
+
+  // Handle window resizing
   useEffect(() => {
-    const fwd = forwardRef.current;
-    const rev = reverseRef.current;
-    if (!fwd || !rev) return;
+    handleResize();
+    window.addEventListener("resize", handleResize, { passive: true });
+    return () => window.removeEventListener("resize", handleResize);
+  }, [handleResize]);
 
-    let frameCount = 0;
+  /**
+   * Lenis integration:
+   * useLenis receives the smooth virtualized scroll position on every Lenis tick.
+   */
+  useLenis((lenis) => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const totalScrollable = container.offsetHeight - window.innerHeight;
+    if (totalScrollable <= 0) return;
+
+    const scrollY = lenis.scroll;
+    const p = Math.min(Math.max(scrollY / totalScrollable, 0), 1);
+
+    targetProgressRef.current = p;
+    rawProgress.set(p);
+  });
+
+  // Native scroll fallback in case Lenis is warming up or disabled
+  useEffect(() => {
+    const onScroll = () => {
+      const container = containerRef.current;
+      if (!container) return;
+      const totalScrollable = container.offsetHeight - window.innerHeight;
+      if (totalScrollable <= 0) return;
+      const p = Math.min(Math.max(window.scrollY / totalScrollable, 0), 1);
+      targetProgressRef.current = p;
+      rawProgress.set(p);
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [rawProgress]);
+
+  /**
+   * Continuous RAF render loop:
+   * Smoothly lerps currentProgress toward targetProgress for uninterrupted
+   * buttery frame rendering.
+   */
+  useEffect(() => {
+    let lastRenderedProgress = -1;
 
     const tick = () => {
-      const duration = fwd.duration;
-      if (!duration || isNaN(duration)) {
-        rafRef.current = requestAnimationFrame(tick);
-        return;
-      }
+      const target = targetProgressRef.current;
+      let curr = currentProgressRef.current;
 
-      const progress = Math.min(Math.max(scrollYProgress.get(), 0), 1);
-      const expectedTime = progress * duration;
-      const currentActiveTime =
-        modeRef.current === "forward" ? fwd.currentTime : duration - rev.currentTime;
-      const diff = expectedTime - currentActiveTime;
-
-      // Direction switch — with hysteresis so tiny scroll jitter doesn't flip constantly
-      const wantsMode: "forward" | "backward" =
-        diff > SWITCH_HYSTERESIS
-          ? "forward"
-          : diff < -SWITCH_HYSTERESIS
-          ? "backward"
-          : modeRef.current;
-
-      if (wantsMode !== modeRef.current) {
-        modeRef.current = wantsMode;
-        setActiveMode(wantsMode);
-        // The standby was continuously pre-synced below, so both clips are
-        // already at the matching timestamp — just pause the outgoing one.
-        if (wantsMode === "forward") {
-          rev.pause();
-        } else {
-          fwd.pause();
-        }
-      }
-
-      if (modeRef.current === "forward") {
-        trackForward(fwd, expectedTime);
+      // Fine micro-lerp to guarantee liquid inertia transitions
+      const diff = target - curr;
+      if (Math.abs(diff) > 0.00005) {
+        curr += diff * 0.25;
       } else {
-        trackForward(rev, duration - expectedTime);
+        curr = target;
       }
+      currentProgressRef.current = curr;
 
-      // ── Keep the INACTIVE (standby) video parked at its mirror position ──
-      // Both clips are all-keyframe, so setting currentTime while paused is a
-      // cheap independent frame decode. Doing this continuously means a
-      // direction switch is just an opacity flip over two already-aligned,
-      // decoded frames — no visible seek. Throttled to a few frames apart.
-      if (++frameCount % STANDBY_SYNC_EVERY === 0) {
-        const standbyTarget =
-          modeRef.current === "forward"
-            ? duration - expectedTime // rev (reverse timeline)
-            : expectedTime;           // fwd
-        const standby = modeRef.current === "forward" ? rev : fwd;
-        if (standby.paused && !standby.seeking) {
-          const clamped = Math.min(Math.max(standbyTarget, 0), duration);
-          if (Math.abs(standby.currentTime - clamped) > 1 / 24 / 2) {
-            standby.currentTime = clamped;
-          }
-        }
+      // Redraw whenever progress shifts
+      if (Math.abs(curr - lastRenderedProgress) > 0.00002) {
+        renderFrame(curr);
+        lastRenderedProgress = curr;
       }
 
       rafRef.current = requestAnimationFrame(tick);
@@ -162,115 +218,118 @@ export default function ScrollyCanvas() {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [scrollYProgress]);
+  }, [renderFrame]);
 
-  // ─── Force the browser to start loading the videos and wire events ──────
+  /**
+   * Preload and off-thread decode frames with priority scheduling:
+   * 1. Frame 0 decodes immediately and renders first paint instantly.
+   * 2. Keyframes distributed across the video timeline load next.
+   * 3. Remaining frames load concurrently in worker batches.
+   */
   useEffect(() => {
-    const fwd = forwardRef.current;
-    if (!fwd) return;
-
-    let revealed = false;
-    const MIN_LOADER_MS = 900; // ensure the loader is visible for a beat
+    let isCancelled = false;
+    let loadedCount = 0;
     const startTime = performance.now();
+    const MIN_LOADER_MS = 800;
 
-    const reveal = () => {
-      if (revealed) return;
-      revealed = true;
-      const elapsed = performance.now() - startTime;
-      const wait = Math.max(0, MIN_LOADER_MS - elapsed);
-      window.setTimeout(() => setIsReady(true), wait);
-    };
+    const checkReady = () => {
+      if (isCancelled) return;
+      const pct = loadedCount / TOTAL_FRAMES;
+      setLoadPct(pct);
 
-    // Drive the bar from real buffered progress so it fills meaningfully
-    // instead of jumping to 100% the instant metadata loads.
-    const onProgress = () => {
-      if (revealed) return;
-      if (fwd.buffered.length > 0 && fwd.duration) {
-        const buffered = fwd.buffered.end(fwd.buffered.length - 1);
-        setLoadPct(Math.min(buffered / fwd.duration, 1));
+      // Once all frames (or primary threshold + minimum display time) are ready
+      if (loadedCount >= TOTAL_FRAMES || (loadedCount >= 60 && pct >= 0.8)) {
+        const elapsed = performance.now() - startTime;
+        const remaining = Math.max(0, MIN_LOADER_MS - elapsed);
+        window.setTimeout(() => {
+          if (!isCancelled) setIsReady(true);
+        }, remaining);
       }
     };
 
-    const onReady = () => {
-      // Show the very first frame as soon as it can be decoded.
-      if (fwd.duration) fwd.currentTime = 0;
-      reveal();
+    const loadSingleFrame = (index: number): Promise<void> => {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.src = getFramePath(index);
+
+        const onDecoded = () => {
+          if (isCancelled) return;
+          imagesRef.current[index] = img;
+          loadedCount++;
+          if (index === 0 && currentProgressRef.current === 0) {
+            renderFrame(0);
+          }
+          checkReady();
+          resolve();
+        };
+
+        // Prefer decode() for off-thread GPU bitmap decoding
+        img
+          .decode()
+          .then(onDecoded)
+          .catch(() => {
+            img.onload = onDecoded;
+            img.onerror = () => resolve();
+          });
+      });
     };
 
-    // Reveal once enough of the clip is buffered (or it can play through).
-    const onBufferedEnough = () => {
-      if (fwd.buffered.length > 0 && fwd.duration) {
-        const buffered = fwd.buffered.end(fwd.buffered.length - 1);
-        setLoadPct(Math.min(buffered / fwd.duration, 1));
-        if (buffered / fwd.duration >= 0.9 || fwd.readyState >= 3) {
-          reveal();
+    // Load Frame 0 first
+    loadSingleFrame(0).then(() => {
+      if (isCancelled) return;
+
+      // Priority Keyframes (every 6th frame across the sequence)
+      const keyframes: number[] = [];
+      for (let i = 6; i < TOTAL_FRAMES; i += 6) {
+        keyframes.push(i);
+      }
+
+      // Remaining frames
+      const remaining: number[] = [];
+      for (let i = 1; i < TOTAL_FRAMES; i++) {
+        if (i % 6 !== 0) remaining.push(i);
+      }
+
+      const queue = [...keyframes, ...remaining];
+
+      // Concurrent batch loading pool (concurrency = 8)
+      const CONCURRENCY = 8;
+      let currentIndex = 0;
+
+      const runWorker = async () => {
+        while (currentIndex < queue.length && !isCancelled) {
+          const frameIdx = queue[currentIndex++];
+          await loadSingleFrame(frameIdx);
         }
+      };
+
+      for (let w = 0; w < CONCURRENCY; w++) {
+        runWorker();
       }
-    };
+    });
 
-    fwd.addEventListener("loadedmetadata", onReady, { once: true });
-    fwd.addEventListener("canplaythrough", onBufferedEnough, { once: true });
-    fwd.addEventListener("progress", onProgress, { passive: true });
-
-    // Explicitly start fetching — required for hidden/paused videos on some
-    // browsers so `loadedmetadata`/`progress` reliably fire.
-    fwd.load();
-
-    // Safety net: never trap the user on the loading screen.
-    const fallback = window.setTimeout(reveal, 8000);
+    // Safety fallback to never trap the user
+    const fallbackTimer = window.setTimeout(() => {
+      if (!isCancelled) setIsReady(true);
+    }, 8000);
 
     return () => {
-      window.clearTimeout(fallback);
-      fwd.removeEventListener("loadedmetadata", onReady);
-      fwd.removeEventListener("canplaythrough", onBufferedEnough);
-      fwd.removeEventListener("progress", onProgress);
+      isCancelled = true;
+      window.clearTimeout(fallbackTimer);
     };
-  }, []);
+  }, [renderFrame]);
 
-  // ─────────────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* ── Pinned hero layer — stays fixed on screen behind everything ── */}
-      <div className="fixed inset-0 z-0 overflow-hidden">
-        {/* Forward clip — scrub-ready */}
-        <video
-          ref={forwardRef}
+      {/* ── Fixed pinned canvas hero layer ── */}
+      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+        <canvas
+          ref={canvasRef}
           aria-hidden="true"
-          muted
-          playsInline
-          preload="auto"
-          src={FORWARD_PATH}
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            opacity: activeMode === "forward" ? 1 : 0,
-            transition: "opacity 120ms linear",
-          }}
-        ></video>
+          className="absolute inset-0 w-full h-full object-cover"
+        />
 
-        {/* Reverse clip — plays forward to scrub backward */}
-        <video
-          ref={reverseRef}
-          aria-hidden="true"
-          muted
-          playsInline
-          preload="auto"
-          src={REVERSE_PATH}
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            opacity: activeMode === "backward" ? 1 : 0,
-            transition: "opacity 120ms linear",
-          }}
-        ></video>
-
-        {/* Vignette */}
+        {/* Radial vignette */}
         <motion.div
           style={{ opacity: vignetteOpacity }}
           className="absolute inset-0 pointer-events-none"
@@ -285,12 +344,14 @@ export default function ScrollyCanvas() {
           />
         </motion.div>
 
-        {/* Text overlays */}
-        <Overlay scrollYProgress={smoothProgress} />
+        {/* Text beats */}
+        <div className="pointer-events-auto">
+          <Overlay scrollYProgress={smoothProgress} />
+        </div>
 
-        {/* Loading screen */}
+        {/* Sleek branded loading screen */}
         {!isReady && (
-          <div className="absolute inset-0 z-50 bg-[#0d0d0d] flex flex-col items-center justify-center gap-6">
+          <div className="absolute inset-0 z-50 bg-[#0d0d0d] flex flex-col items-center justify-center gap-6 pointer-events-auto">
             {/* Logo mark */}
             <div className="font-display text-3xl font-bold text-white tracking-tight">
               Krishna<span className="text-[#e8ff3e]">.</span>
@@ -301,22 +362,27 @@ export default function ScrollyCanvas() {
               <motion.div
                 className="absolute inset-y-0 left-0 bg-[#e8ff3e]"
                 initial={{ scaleX: 0 }}
-                animate={{ scaleX: loadPct }}
+                animate={{ scaleX: Math.min(loadPct, 1) }}
                 style={{ transformOrigin: "left" }}
-                transition={{ ease: "linear" }}
+                transition={{ ease: "linear", duration: 0.15 }}
               />
             </div>
 
-            {/* Label */}
+            {/* Percentage */}
             <span className="font-mono text-xs tracking-[0.3em] text-white/30 uppercase">
-              {Math.round(loadPct * 100)}%
+              {Math.round(Math.min(loadPct, 1) * 100)}%
             </span>
           </div>
         )}
       </div>
 
-      {/* ── Scroll spacer — drives the animation progress ── */}
-      <div ref={containerRef} className="relative" style={{ height: SCROLL_HEIGHT }} aria-hidden="true" />
+      {/* ── Scroll spacer — drives the Lenis scroll progress ── */}
+      <div
+        ref={containerRef}
+        className="relative"
+        style={{ height: SCROLL_HEIGHT }}
+        aria-hidden="true"
+      />
     </>
   );
 }

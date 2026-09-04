@@ -1,36 +1,18 @@
 "use client";
 
 import { useEffect } from "react";
-import Lenis from "lenis";
+import { ReactLenis, useLenis } from "lenis/react";
 
 /**
  * Lenis-powered smooth scrolling applied across the whole site.
- * It virtualizes native scrolling, which also smooths the scroll-scrubbed
- * hero video (framer-motion's useScroll reads window scrollY, so it follows
- * the smoothed position automatically).
+ * Uses ReactLenis to provide root scroll virtualization and allow
+ * child components (like ScrollyCanvas) to hook directly into scroll events.
  */
-export default function SmoothScroll({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function AnchorScrollHandler() {
+  const lenis = useLenis();
+
   useEffect(() => {
-    const lenis = new Lenis({
-      duration: 1.2,
-      // Smooth ease-out that still feels responsive on fast flicks.
-      easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-      smoothWheel: true,
-      touchMultiplier: 1.5,
-    });
-
-    let rafId: number;
-    const raf = (time: number) => {
-      lenis.raf(time);
-      rafId = requestAnimationFrame(raf);
-    };
-    rafId = requestAnimationFrame(raf);
-
-    // Smoothly scroll to anchor targets (nav links, etc.) via Lenis.
+    if (!lenis) return;
     const onClick = (e: MouseEvent) => {
       const anchor = (e.target as HTMLElement).closest<HTMLAnchorElement>(
         'a[href^="#"]'
@@ -41,17 +23,34 @@ export default function SmoothScroll({
       const el = document.querySelector(hash);
       if (!el) return;
       e.preventDefault();
-      const target = el as HTMLElement;
-      lenis.scrollTo(target, { offset: 0 });
+      lenis.scrollTo(el as HTMLElement, { offset: 0 });
     };
     document.addEventListener("click", onClick);
-
     return () => {
-      cancelAnimationFrame(rafId);
       document.removeEventListener("click", onClick);
-      lenis.destroy();
     };
-  }, []);
+  }, [lenis]);
 
-  return <>{children}</>;
+  return null;
+}
+
+export default function SmoothScroll({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <ReactLenis
+      root
+      options={{
+        duration: 1.2,
+        easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+        smoothWheel: true,
+        touchMultiplier: 1.5,
+      }}
+    >
+      <AnchorScrollHandler />
+      {children}
+    </ReactLenis>
+  );
 }

@@ -3,7 +3,13 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 
-const NAV_LINKS = ["Work", "About", "Process", "Contact"] as const;
+const NAV_LINKS = [
+  { label: "Work", href: "/#work" },
+  { label: "About", href: "/#about" },
+  { label: "Process", href: "/#process" },
+  { label: "Contact", href: "/#contact" },
+  { label: "Resume", href: "/resume" },
+] as const;
 
 // The hero scroll-video section is 500vh tall. Keep the navbar transparent
 // while that animation is on screen, and only add the solid/blurred background
@@ -61,13 +67,13 @@ export default function Navbar() {
           {/* Desktop nav links */}
           <ul className="hidden md:flex items-center gap-8">
             {NAV_LINKS.map((link) => (
-              <li key={link}>
+              <li key={link.label}>
                 <a
-                  href={`#${link.toLowerCase()}`}
+                  href={link.href}
                   className="font-mono text-xs tracking-[0.2em] uppercase text-white/40
                              hover:text-white transition-colors duration-200 relative group"
                 >
-                  {link}
+                  {link.label}
                   <span
                     className="absolute -bottom-1 left-0 w-0 h-px bg-[#e8ff3e]
                                group-hover:w-full transition-all duration-300"
@@ -140,15 +146,15 @@ export default function Navbar() {
             <div className="flex flex-col items-center justify-center h-full gap-10">
               {NAV_LINKS.map((link, i) => (
                 <motion.a
-                  key={link}
-                  href={`#${link.toLowerCase()}`}
+                  key={link.label}
+                  href={link.href}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.1 + i * 0.07, duration: 0.5 }}
                   onClick={() => setMenuOpen(false)}
                   className="font-display font-bold text-4xl text-white/60 hover:text-[#e8ff3e] transition-colors"
                 >
-                  {link}
+                  {link.label}
                 </motion.a>
               ))}
             </div>

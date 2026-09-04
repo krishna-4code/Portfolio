@@ -12,8 +12,8 @@ export const SITE = {
 export const SOCIAL_LINKS = [
   {
     label: "Resume",
-    href: "/resume.pdf",
-    external: true,
+    href: "/resume",
+    external: false,
     icon: "CV",
   },
   {

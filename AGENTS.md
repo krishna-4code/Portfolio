@@ -36,32 +36,31 @@ code. Don't fix with `--fix` silently; confirm rules match repo style.
 `Navbar` → `ScrollyCanvas` (hero) → `Projects` → `Contact` → `Footer`, wrapped in
 `CustomCursor` and (in the layout) `SmoothScroll`.
 
-## Hero video (ScrollyCanvas.tsx)
+## Hero animation (ScrollyCanvas.tsx)
 
-- Dual-clip, rate-based scroll scrub. Two all-keyframe videos:
-  - `public/hero-fwd-key.mp4` — forward clip
-  - `public/hero-reverse.mp4` — reversed copy (in `hero-fwd-key.mp4` timeline)
-- Forward scroll plays the fwd clip; backward plays the reverse clip forward.
-  Both are `keyint=1` (every frame a keyframe) so seeks are cheap and the
-  standby clip is kept parked at its mirror position for instant crossfades.
-- Tuning knobs are at the top of the file (`MAX_RATE`, `CORRECTION_GAIN`,
-  `SWITCH_HYSTERESIS`, etc.).
+- Lenis-driven HTML5 `<canvas>` scrollytelling using 240 extracted WebP frames of `hero.mp4`:
+  - `public/hero-frames/frame_0001.webp` through `frame_0240.webp` (~10MB total).
+- High-performance features for maximum smoothness:
+  - **Lenis synchronization**: Directly hooks into Lenis's smoothed virtual scroll via `useLenis`.
+  - **Off-thread decoding**: Images are decoded off the main thread with `img.decode()` before rendering, preventing frame drops.
+  - **Sub-frame crossfade blending**: Temporal interpolation between adjacent frames eliminates discrete frame stepping, giving liquid 60/120fps motion.
+  - **Prioritized loading**: Frame 0 decodes first for instant paint, followed by distributed keyframes, then concurrent batch workers.
+  - **Nearest-frame fallback**: If a frame is loading during rapid scrubbing, the nearest loaded frame is rendered instantly, preventing blank flashes.
 - `Overlay.tsx` renders the text beats wired to a **spring-smoothed** progress.
 
-### Regenerating the clips (requires ffmpeg)
+### Regenerating frames (requires ffmpeg)
 
 ```bash
-# from a normal GOP source (e.g. original hero.mp4):
-ffmpeg -i hero.mp4 -c:v libx264 -x264-params keyint=1:min-keyint=1:scenecut=0 -crf 20 -an -pix_fmt yuv420p hero-fwd-key.mp4
-ffmpeg -i hero.mp4 -vf reverse -c:v libx264 -x264-params keyint=1:min-keyint=1:scenecut=0 -crf 20 -an -pix_fmt yuv420p hero-reverse.mp4
+# Extract 240 high-quality WebP frames at 24fps from hero.mp4:
+ffmpeg -i public/hero.mp4 -c:v libwebp -quality 80 -preset photo public/hero-frames/frame_%04d.webp -y
 ```
 
 ## Projects (Projects.tsx)
 
 - Data is fetched live from GitHub (`src/lib/github.ts`, username in
   `src/lib/site.ts`) and merged with curated metadata in `Projects.tsx`.
-- Rendered as a responsive card grid (no full-bleed galleries; the earlier
-  tilted reel and dome gallery views were removed at the user's request).
+- Rendered as a responsive card grid with glassmorphism styling, ambient glow
+  effects, category tags, and direct GitHub links.
 
 ## Navbar (Navbar.tsx)
 
@@ -72,9 +71,10 @@ a license key + `@reactbits-pro` registry configured (not currently set up).
 
 ## Public assets
 
-- `public/hero-fwd-key.mp4`, `public/hero-reverse.mp4` — hero scrub clips.
-- `public/sequence/*.png` — legacy frame export (no longer used by the hero;
-  kept for reference). The video in `ScrollyCanvas.tsx` superseded these.
+- `public/hero-frames/frame_*.webp` — 240 extracted WebP frames used by `ScrollyCanvas.tsx`.
+- `public/hero.mp4` — source hero video.
+- `public/hero-fwd-key.mp4`, `public/hero-reverse.mp4` — previous scrub clips (kept for reference).
+- `public/sequence/*.png` — legacy low-fps PNG export (kept for reference).
 
 ## Gotchas
 

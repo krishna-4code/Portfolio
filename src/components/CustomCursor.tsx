@@ -8,25 +8,31 @@ export default function CustomCursor() {
   const mouseY = useMotionValue(-100);
   const trailX = useMotionValue(-100);
   const trailY = useMotionValue(-100);
+  const cursorOpacity = useMotionValue(0);
 
   const isHoveringRef = useRef(false);
+  const hasMovedRef = useRef(false);
   const hoverScale = useMotionValue(1);
 
-  // Main dot — snappy
-  const dotX = useSpring(mouseX, { stiffness: 800, damping: 50, mass: 0.3 });
-  const dotY = useSpring(mouseY, { stiffness: 800, damping: 50, mass: 0.3 });
-
-  // Trail ring — lagged
-  const ringX = useSpring(trailX, { stiffness: 180, damping: 22, mass: 0.6 });
-  const ringY = useSpring(trailY, { stiffness: 180, damping: 22, mass: 0.6 });
-  const ringScale = useSpring(hoverScale, { stiffness: 300, damping: 28 });
+  // Core dot tracks mouse coordinates directly with 0ms lag and 0 overshoot.
+  // Trail ring follows closely with high stiffness and balanced damping to eliminate overshoot.
+  const ringX = useSpring(trailX, { stiffness: 750, damping: 24, mass: 0.1 });
+  const ringY = useSpring(trailY, { stiffness: 750, damping: 24, mass: 0.1 });
+  const ringScale = useSpring(hoverScale, { stiffness: 400, damping: 30 });
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
+      cursorOpacity.set(1);
       mouseX.set(e.clientX - 4);
       mouseY.set(e.clientY - 4);
       trailX.set(e.clientX - 20);
       trailY.set(e.clientY - 20);
+
+      if (!hasMovedRef.current) {
+        hasMovedRef.current = true;
+        ringX.jump(e.clientX - 20);
+        ringY.jump(e.clientY - 20);
+      }
     };
 
     const onEnterLink = () => {
@@ -39,7 +45,17 @@ export default function CustomCursor() {
       hoverScale.set(1);
     };
 
+    const onLeaveWindow = () => {
+      cursorOpacity.set(0);
+    };
+
+    const onEnterWindow = () => {
+      cursorOpacity.set(1);
+    };
+
     window.addEventListener("mousemove", onMove, { passive: true });
+    document.documentElement.addEventListener("mouseleave", onLeaveWindow);
+    document.documentElement.addEventListener("mouseenter", onEnterWindow);
 
     // Attach to all interactive elements
     const interactives = document.querySelectorAll("a, button, [data-cursor]");
@@ -62,13 +78,15 @@ export default function CustomCursor() {
 
     return () => {
       window.removeEventListener("mousemove", onMove);
+      document.documentElement.removeEventListener("mouseleave", onLeaveWindow);
+      document.documentElement.removeEventListener("mouseenter", onEnterWindow);
       interactives.forEach((el) => {
         el.removeEventListener("mouseenter", onEnterLink);
         el.removeEventListener("mouseleave", onLeaveLink);
       });
       observer.disconnect();
     };
-  }, [mouseX, mouseY, trailX, trailY, hoverScale]);
+  }, [mouseX, mouseY, trailX, trailY, ringX, ringY, hoverScale, cursorOpacity]);
 
   return (
     // Hidden on touch devices
@@ -79,6 +97,7 @@ export default function CustomCursor() {
           x: ringX,
           y: ringY,
           scale: ringScale,
+          opacity: cursorOpacity,
           border: "1px solid rgba(232, 255, 62, 0.35)",
           mixBlendMode: "difference",
         }}
@@ -88,8 +107,9 @@ export default function CustomCursor() {
       {/* Core dot */}
       <motion.div
         style={{
-          x: dotX,
-          y: dotY,
+          x: mouseX,
+          y: mouseY,
+          opacity: cursorOpacity,
           background: "#e8ff3e",
           mixBlendMode: "difference",
         }}

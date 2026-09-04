@@ -4,10 +4,7 @@ import { motion, useInView } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { fetchGitHubRepos, GitHubRepo } from "@/lib/github";
 
-// ─────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────
-interface Project {
+export interface Project {
   id: number;
   name: string;
   title: string;
@@ -21,9 +18,9 @@ interface Project {
   link?: string;
 }
 
-// Curated metadata keyed by GitHub repo name. When a repo fetched from GitHub
-// matches one of these keys we use this richer presentation (description,
-// tags, accent colors); otherwise we fall back to the raw repo data.
+// ─────────────────────────────────────────────
+// Curated metadata keyed by GitHub repo name
+// ─────────────────────────────────────────────
 const CURATED: Record<string, Omit<Project, "id" | "name">> = {
   "eco-sankalan": {
     title: "EcoSankalan",
@@ -47,6 +44,56 @@ const CURATED: Record<string, Omit<Project, "id" | "name">> = {
     accentColor: "#e8ff3e",
     featured: true,
   },
+  "Awaraa-s-Culture": {
+    title: "Awaraa's Culture",
+    category: "Creative Frontend · E-Commerce",
+    description:
+      "A culturally inspired modern web experience featuring fluid motion design, custom typography, and responsive micro-interactions.",
+    tags: ["TypeScript", "Next.js", "Tailwind", "Framer Motion"],
+    year: "2024",
+    glowColor: "#38bdf8",
+    accentColor: "#38bdf8",
+  },
+  "CFG-PDA_Visualizer": {
+    title: "CFG-PDA Visualizer",
+    category: "Computer Science · Visualization",
+    description:
+      "Interactive visualizer simulating Context-Free Grammars and Pushdown Automata with animated state transitions and step-by-step stack analysis.",
+    tags: ["JavaScript", "Graph Theory", "Algorithms", "Canvas"],
+    year: "2024",
+    glowColor: "#a78bfa",
+    accentColor: "#a78bfa",
+  },
+  "Pumping_Lemma_Visualisation_Tool": {
+    title: "Pumping Lemma Visualizer",
+    category: "Formal Languages · Education",
+    description:
+      "An educational simulation tool demonstrating the Pumping Lemma for Regular and Context-Free Languages with step-by-step adversary games.",
+    tags: ["JavaScript", "HTML5", "Automata", "CSS3"],
+    year: "2024",
+    glowColor: "#fbbf24",
+    accentColor: "#fbbf24",
+  },
+  "Aaina-Productions": {
+    title: "Aaina Productions",
+    category: "Media · Web Experience",
+    description:
+      "Official digital presence for a creative production studio with high-definition video portfolios, client showcase reels, and bespoke layout design.",
+    tags: ["TypeScript", "React", "Video Streaming", "Tailwind"],
+    year: "2024",
+    glowColor: "#ec4899",
+    accentColor: "#ec4899",
+  },
+  "Jarvis-AI-Assistant": {
+    title: "Jarvis AI Assistant",
+    category: "Artificial Intelligence · Voice",
+    description:
+      "Voice-activated intelligent desktop assistant supporting NLP command execution, system automation, and web intelligence retrieval.",
+    tags: ["Python", "Speech Recognition", "Automation", "AI"],
+    year: "2024",
+    glowColor: "#2dd4bf",
+    accentColor: "#2dd4bf",
+  },
   "neural-commerce": {
     title: "Neural Commerce",
     category: "E-Commerce · AI",
@@ -69,8 +116,117 @@ const CURATED: Record<string, Omit<Project, "id" | "name">> = {
   },
 };
 
-// Palette assigned to repos without curated metadata (cycled through).
-const FALLBACK_COLORS = ["#e8ff3e", "#4ade80", "#f87171", "#a78bfa", "#38bdf8"];
+// Fallback projects if GitHub API is unreachable
+const DEFAULT_PROJECTS: Project[] = [
+  {
+    id: 101,
+    name: "Awaraa-s-Culture",
+    title: "Awaraa's Culture",
+    category: "Creative Frontend · E-Commerce",
+    description:
+      "A culturally inspired modern web experience featuring fluid motion design, custom typography, and responsive micro-interactions.",
+    tags: ["TypeScript", "Next.js", "Tailwind", "Framer Motion"],
+    year: "2024",
+    glowColor: "#38bdf8",
+    accentColor: "#38bdf8",
+    link: "https://github.com/krishna-4code/Awaraa-s-Culture",
+  },
+  {
+    id: 102,
+    name: "spatial-interface",
+    title: "Spatial Interface",
+    category: "Interaction Design · WebGL",
+    description:
+      "An immersive 3D UI experiment pushing the limits of web-based spatial interaction, with custom GLSL shaders and post-processing effects.",
+    tags: ["Three.js", "GLSL", "WebGL", "Next.js", "Framer Motion"],
+    year: "2024",
+    glowColor: "#e8ff3e",
+    accentColor: "#e8ff3e",
+    featured: true,
+    link: "https://github.com/krishna-4code/Portfolio",
+  },
+  {
+    id: 103,
+    name: "CFG-PDA_Visualizer",
+    title: "CFG-PDA Visualizer",
+    category: "Computer Science · Visualization",
+    description:
+      "Interactive visualizer simulating Context-Free Grammars and Pushdown Automata with animated state transitions and step-by-step stack analysis.",
+    tags: ["JavaScript", "Graph Theory", "Algorithms", "Canvas"],
+    year: "2024",
+    glowColor: "#a78bfa",
+    accentColor: "#a78bfa",
+    link: "https://github.com/krishna-4code/CFG-PDA_Visualizer",
+  },
+  {
+    id: 104,
+    name: "eco-sankalan",
+    title: "EcoSankalan",
+    category: "Full-Stack · PWA · AI",
+    description:
+      "A sustainability platform connecting eco-conscious communities. Gemini AI integration, real-time push via Firebase FCM, OpenStreetMap geo-features, and a Material Design 3 interface.",
+    tags: ["React", "Node.js", "MongoDB Atlas", "Gemini AI", "Tailwind"],
+    year: "2024",
+    glowColor: "#4ade80",
+    accentColor: "#4ade80",
+    featured: true,
+    link: "https://github.com/krishna-4code",
+  },
+  {
+    id: 105,
+    name: "Pumping_Lemma_Visualisation_Tool",
+    title: "Pumping Lemma Visualizer",
+    category: "Formal Languages · Education",
+    description:
+      "An educational simulation tool demonstrating the Pumping Lemma for Regular and Context-Free Languages with step-by-step adversary games.",
+    tags: ["JavaScript", "HTML5", "Automata", "CSS3"],
+    year: "2024",
+    glowColor: "#fbbf24",
+    accentColor: "#fbbf24",
+    link: "https://github.com/krishna-4code/Pumping_Lemma_Visualisation_Tool",
+  },
+  {
+    id: 106,
+    name: "Aaina-Productions",
+    title: "Aaina Productions",
+    category: "Media · Web Experience",
+    description:
+      "Official digital presence for a creative production studio with high-definition video portfolios, client showcase reels, and bespoke layout design.",
+    tags: ["TypeScript", "React", "Video Streaming", "Tailwind"],
+    year: "2024",
+    glowColor: "#ec4899",
+    accentColor: "#ec4899",
+    link: "https://github.com/krishna-4code/Aaina-Productions",
+  },
+  {
+    id: 107,
+    name: "Jarvis-AI-Assistant",
+    title: "Jarvis AI Assistant",
+    category: "Artificial Intelligence · Voice",
+    description:
+      "Voice-activated intelligent desktop assistant supporting NLP command execution, system automation, and web intelligence retrieval.",
+    tags: ["Python", "Speech Recognition", "Automation", "AI"],
+    year: "2024",
+    glowColor: "#2dd4bf",
+    accentColor: "#2dd4bf",
+    link: "https://github.com/krishna-4code/Jarvis-AI-Assistant",
+  },
+  {
+    id: 108,
+    name: "neural-commerce",
+    title: "Neural Commerce",
+    category: "E-Commerce · AI",
+    description:
+      "AI-powered shopping platform with real-time personalization, predictive search, and TensorFlow.js inference running entirely in the browser.",
+    tags: ["Next.js", "TensorFlow.js", "Stripe", "TypeScript"],
+    year: "2023",
+    glowColor: "#f87171",
+    accentColor: "#f87171",
+    link: "https://github.com/krishna-4code",
+  },
+];
+
+const FALLBACK_COLORS = ["#e8ff3e", "#4ade80", "#f87171", "#a78bfa", "#38bdf8", "#fbbf24", "#ec4899", "#2dd4bf"];
 
 function titleCase(name: string): string {
   return name
@@ -78,8 +234,15 @@ function titleCase(name: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// Build the final project list: merge GitHub data with curated metadata.
-function buildProjects(repos: GitHubRepo[]): Project[] {  return repos.map((repo, i) => {
+// Build final project list merging GitHub data with curated metadata
+function buildProjects(repos: GitHubRepo[]): Project[] {
+  const filtered = repos.filter(
+    (repo) => repo.name !== "krishna-4code" && !repo.name.startsWith(".")
+  );
+
+  if (filtered.length === 0) return DEFAULT_PROJECTS;
+
+  return filtered.map((repo, i) => {
     const curated = CURATED[repo.name];
     const accent = FALLBACK_COLORS[i % FALLBACK_COLORS.length];
     const year = repo.created_at ? repo.created_at.slice(0, 4) : "";
@@ -91,7 +254,7 @@ function buildProjects(repos: GitHubRepo[]): Project[] {  return repos.map((repo
       description:
         curated?.description ??
         (repo.description || "An open-source project on GitHub."),
-      tags: curated?.tags ?? (repo.language ? [repo.language] : []),
+      tags: curated?.tags ?? (repo.language ? [repo.language] : ["TypeScript"]),
       year: curated?.year ?? year,
       glowColor: curated?.glowColor ?? accent,
       accentColor: curated?.accentColor ?? accent,
@@ -102,10 +265,9 @@ function buildProjects(repos: GitHubRepo[]): Project[] {  return repos.map((repo
 }
 
 // ─────────────────────────────────────────────
-// Single Card
+// Single Card for Responsive Grid View
 // ─────────────────────────────────────────────
 function ProjectCard({ project, index }: { project: Project; index: number }) {
-
   const [hovered, setHovered] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const isInView = useInView(cardRef, { once: true, margin: "-80px" });
@@ -122,8 +284,7 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className={`group relative rounded-2xl p-7 md:p-9 overflow-hidden transition-all duration-500
-        ${project.featured ? "md:col-span-1" : ""}`}
+      className="group relative rounded-2xl p-7 md:p-9 overflow-hidden transition-all duration-500"
       style={{
         background: hovered
           ? "rgba(255,255,255,0.045)"
@@ -159,8 +320,7 @@ function ProjectCard({ project, index }: { project: Project; index: number }) {
             {project.category}
           </span>
           <h3
-            className="font-display font-bold text-2xl md:text-3xl text-white leading-tight tracking-tight
-                       transition-colors duration-300"
+            className="font-display font-bold text-2xl md:text-3xl text-white leading-tight tracking-tight transition-colors duration-300"
             style={{ color: hovered ? project.accentColor : "#ffffff" }}
           >
             {project.title}
@@ -265,17 +425,18 @@ function SectionHeader() {
 // Main export
 // ─────────────────────────────────────────────
 export default function Projects() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [error, setError] = useState(false);
+  const [projects, setProjects] = useState<Project[]>(DEFAULT_PROJECTS);
 
   useEffect(() => {
     let cancelled = false;
     fetchGitHubRepos()
       .then((repos) => {
-        if (!cancelled) setProjects(buildProjects(repos));
+        if (!cancelled && repos && repos.length > 0) {
+          setProjects(buildProjects(repos));
+        }
       })
       .catch(() => {
-        if (!cancelled) setError(true);
+        // Fallback to DEFAULT_PROJECTS already initialized
       });
     return () => {
       cancelled = true;
@@ -299,19 +460,11 @@ export default function Projects() {
       <div className="max-w-7xl mx-auto px-6 md:px-14 lg:px-20">
         <SectionHeader />
 
-        {projects.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 lg:gap-6">
-            {projects.map((project, i) => (
-              <ProjectCard key={project.id} project={project} index={i} />
-            ))}
-          </div>
-        ) : (
-          <p className="text-white/30 font-mono text-xs tracking-[0.2em] uppercase">
-            {error
-              ? "Couldn't load projects from GitHub right now."
-              : "Loading projects from GitHub…"}
-          </p>
-        )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 lg:gap-6">
+          {projects.map((project, i) => (
+            <ProjectCard key={project.id} project={project} index={i} />
+          ))}
+        </div>
       </div>
     </section>
   );
