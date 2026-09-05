@@ -12,7 +12,7 @@ export default function Contact() {
     <section
       ref={ref}
       id="contact"
-      className="relative bg-[#0d0d0d] py-28 md:py-40 px-6 md:px-14 lg:px-20"
+      className="relative bg-[#0d0d0d]/75 py-28 md:py-40 px-6 md:px-14 lg:px-20"
     >
       {/* Subtle top divider */}
       <div

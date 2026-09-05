@@ -446,7 +446,7 @@ export default function Projects() {
   return (
     <section
       id="work"
-      className="relative bg-[#0d0d0d] py-28 md:py-40"
+      className="relative bg-[#0d0d0d]/75 py-28 md:py-40"
     >
       {/* Subtle top divider */}
       <div

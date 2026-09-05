@@ -4,6 +4,7 @@ import Projects from "@/components/Projects";
 import Contact from "@/components/Contact";
 import Footer from "@/components/Footer";
 import CustomCursor from "@/components/CustomCursor";
+import TechBackground from "@/components/TechBackground";
 
 export default function Home() {
   return (
@@ -11,6 +12,7 @@ export default function Home() {
       <CustomCursor />
       <Navbar />
       <ScrollyCanvas />
+      <TechBackground />
       <div className="relative z-10">
         <Projects />
         <Contact />
