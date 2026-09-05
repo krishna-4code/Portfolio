@@ -15,26 +15,26 @@ type FloatingIcon = {
 };
 
 const ICONS: FloatingIcon[] = [
-  { name: "react", size: 46, duration: 16, delay: 0, opacity: 0.22, xPct: 6.5, yPct: 7.5 },
-  { name: "nextjs", size: 60, duration: 19, delay: 0.6, opacity: 0.16, xPct: 25, yPct: 6.5 },
-  { name: "typescript", size: 40, duration: 14, delay: 0.2, opacity: 0.26, xPct: 93, yPct: 11 },
-  { name: "firebase", size: 42, duration: 15, delay: 1.9, opacity: 0.16, xPct: 38, yPct: 16 },
-  { name: "nodejs", size: 52, duration: 17, delay: 1.1, opacity: 0.2, xPct: 77, yPct: 20 },
-  { name: "tailwindcss", size: 54, duration: 15.5, delay: 0.4, opacity: 0.18, xPct: 11.5, yPct: 25 },
-  { name: "mongodb", size: 40, duration: 13, delay: 2.4, opacity: 0.18, xPct: 64, yPct: 29 },
-  { name: "threejs", size: 44, duration: 13.5, delay: 0.9, opacity: 0.24, xPct: 95, yPct: 33 },
-  { name: "framer", size: 48, duration: 18, delay: 1.6, opacity: 0.15, xPct: 20.5, yPct: 38 },
-  { name: "expressjs", size: 40, duration: 14.5, delay: 2.2, opacity: 0.14, xPct: 44, yPct: 39 },
-  { name: "js", size: 38, duration: 15, delay: 0.3, opacity: 0.28, xPct: 4.5, yPct: 43 },
-  { name: "css3", size: 42, duration: 16.5, delay: 1.3, opacity: 0.2, xPct: 68, yPct: 47 },
-  { name: "html5", size: 42, duration: 14, delay: 0.7, opacity: 0.2, xPct: 31, yPct: 49 },
-  { name: "python", size: 50, duration: 17.5, delay: 0.5, opacity: 0.18, xPct: 93, yPct: 56 },
-  { name: "tensorflow", size: 46, duration: 16, delay: 1.8, opacity: 0.2, xPct: 7.5, yPct: 62 },
-  { name: "gemini", size: 48, duration: 18.5, delay: 0.2, opacity: 0.2, xPct: 48, yPct: 69 },
-  { name: "postgresql", size: 44, duration: 15.5, delay: 0.8, opacity: 0.2, xPct: 80, yPct: 71 },
-  { name: "socketio", size: 36, duration: 14, delay: 2.6, opacity: 0.18, xPct: 38, yPct: 76 },
-  { name: "stripe", size: 48, duration: 17, delay: 1.4, opacity: 0.16, xPct: 13.5, yPct: 79 },
-  { name: "docker", size: 40, duration: 13.5, delay: 0.1, opacity: 0.24, xPct: 94, yPct: 85 },
+  { name: "react", size: 46, duration: 16, delay: 0, opacity: 0.22, xPct: 3.2, yPct: 8 },
+  { name: "typescript", size: 40, duration: 14, delay: 0.2, opacity: 0.26, xPct: 8.5, yPct: 14 },
+  { name: "firebase", size: 42, duration: 15, delay: 1.9, opacity: 0.16, xPct: 4.2, yPct: 21 },
+  { name: "tailwindcss", size: 54, duration: 15.5, delay: 0.4, opacity: 0.18, xPct: 9.2, yPct: 28 },
+  { name: "expressjs", size: 40, duration: 14.5, delay: 2.2, opacity: 0.14, xPct: 5.5, yPct: 36 },
+  { name: "js", size: 38, duration: 15, delay: 0.3, opacity: 0.28, xPct: 2.8, yPct: 44 },
+  { name: "html5", size: 42, duration: 14, delay: 0.7, opacity: 0.2, xPct: 8, yPct: 52 },
+  { name: "tensorflow", size: 46, duration: 16, delay: 1.8, opacity: 0.2, xPct: 4.4, yPct: 61 },
+  { name: "socketio", size: 36, duration: 14, delay: 2.6, opacity: 0.18, xPct: 8.7, yPct: 69 },
+  { name: "stripe", size: 48, duration: 17, delay: 1.4, opacity: 0.16, xPct: 3.6, yPct: 78 },
+  { name: "nextjs", size: 60, duration: 19, delay: 0.6, opacity: 0.16, xPct: 93, yPct: 7 },
+  { name: "nodejs", size: 52, duration: 17, delay: 1.1, opacity: 0.2, xPct: 90.5, yPct: 13 },
+  { name: "threejs", size: 44, duration: 13.5, delay: 0.9, opacity: 0.24, xPct: 95.5, yPct: 21 },
+  { name: "framer", size: 48, duration: 18, delay: 1.6, opacity: 0.15, xPct: 89.8, yPct: 29 },
+  { name: "mongodb", size: 40, duration: 13, delay: 2.4, opacity: 0.18, xPct: 96.2, yPct: 37 },
+  { name: "css3", size: 42, duration: 16.5, delay: 1.3, opacity: 0.2, xPct: 91, yPct: 45 },
+  { name: "python", size: 50, duration: 17.5, delay: 0.5, opacity: 0.18, xPct: 94, yPct: 54 },
+  { name: "gemini", size: 48, duration: 18.5, delay: 0.2, opacity: 0.2, xPct: 89.5, yPct: 62 },
+  { name: "postgresql", size: 44, duration: 15.5, delay: 0.8, opacity: 0.2, xPct: 95.2, yPct: 70 },
+  { name: "docker", size: 40, duration: 13.5, delay: 0.1, opacity: 0.24, xPct: 92, yPct: 79 },
 ];
 
 const RADIUS = 170;
@@ -57,8 +57,8 @@ function TechIcon({
 }) {
   const mx = useMotionValue(0);
   const my = useMotionValue(0);
-  const sx = useSpring(mx, { stiffness: 150, damping: 20, mass: 0.5 });
-  const sy = useSpring(my, { stiffness: 150, damping: 20, mass: 0.5 });
+  const sx = useSpring(mx, { stiffness: 60, damping: 16, mass: 0.9 });
+  const sy = useSpring(my, { stiffness: 60, damping: 16, mass: 0.9 });
 
   useEffect(() => {
     const entry: Entry = {

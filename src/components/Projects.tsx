@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, useInView } from "framer-motion";
-import { useRef, useState } from "react";
+import { useRef } from "react";
 
 interface Project {
   key: string;
@@ -53,20 +53,10 @@ const FEATURED: Project[] = [
 function FeatureCard({ project, index }: { project: Project; index: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once: true, margin: "-60px" });
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    setMousePos({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    });
-  };
 
   return (
     <motion.article
       ref={ref}
-      onMouseMove={handleMouseMove}
       initial={{ opacity: 0, y: 90 }}
       animate={inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 90 }}
       whileHover={{ y: -8 }}
@@ -80,32 +70,23 @@ function FeatureCard({ project, index }: { project: Project; index: number }) {
         },
       }}
       className="group relative flex flex-col rounded-3xl p-8 overflow-hidden
-                 bg-[#111113]/80 border border-white/[0.08] backdrop-blur-xl
-                 hover:border-white/[0.22] transition-colors duration-400
-                 hover:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.85)]"
+                 bg-[#121216] border border-white/10
+                 hover:bg-[#18181d] hover:border-white/25 transition-colors duration-400
+                 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_16px_48px_-16px_rgba(0,0,0,0.85)]
+                 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.09),0_24px_64px_-16px_rgba(0,0,0,0.95)]"
     >
-      {/* Clean cursor spotlight (flat, no 3D folding) */}
+      {/* Specular top edge — solid, premium finish */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -inset-px rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-        style={{
-          background: `radial-gradient(400px circle at ${mousePos.x}px ${mousePos.y}px, ${project.accentColor}18, transparent 75%)`,
-        }}
-      />
-
-      {/* Subtle ambient corner glow on hover */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -top-16 -right-16 w-52 h-52 rounded-full blur-3xl
-                   opacity-0 group-hover:opacity-20 transition-opacity duration-700"
-        style={{ background: project.accentColor }}
+        className="pointer-events-none absolute inset-x-0 top-0 h-px
+                   bg-gradient-to-r from-transparent via-white/20 to-transparent"
       />
 
       {/* Top index and category header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2.5">
           <span
-            className="font-mono text-[11px] px-2.5 py-0.5 rounded-full border bg-white/[0.03]"
+            className="font-mono text-[11px] px-2.5 py-0.5 rounded-full border bg-[#1b1b21]"
             style={{
               borderColor: `${project.accentColor}40`,
               color: project.accentColor,
@@ -147,8 +128,8 @@ function FeatureCard({ project, index }: { project: Project; index: number }) {
           <span
             key={tag}
             className="px-3 py-1 font-mono text-[10px] tracking-wide rounded-full
-                       border border-white/10 bg-white/[0.03] text-white/45
-                       group-hover:border-white/20 group-hover:text-white/70 transition-colors duration-300"
+                       border border-white/10 bg-[#1b1b21] text-white/45
+                       group-hover:border-white/25 group-hover:text-white/75 transition-colors duration-300"
           >
             {tag}
           </span>
@@ -209,7 +190,7 @@ export default function Projects() {
   const headerInView = useInView(headerRef, { once: true, margin: "-60px" });
 
   return (
-    <section id="work" className="relative bg-[#0d0d0d]/75 py-28 md:py-40">
+    <section id="work" className="relative bg-black py-28 md:py-40">
       {/* Top divider */}
       <div
         className="absolute top-0 left-0 right-0 h-px"

@@ -11,10 +11,12 @@ const NAV_LINKS = [
   { label: "Resume", href: "/resume" },
 ] as const;
 
-// The hero scroll-video section is 500vh tall. Keep the navbar transparent
-// while that animation is on screen, and only add the solid/blurred background
-// once the user scrolls past it into the content below.
-const HERO_SCROLL_HEIGHT_VH = 5;
+// The hero scroll-video section is 500vh on desktop, 300vh on mobile.
+// Keep the navbar transparent while that animation is on screen, and only
+// add the solid/blurred background once the user scrolls past it.
+const MOBILE_BREAKPOINT = 768;
+const HERO_SCROLL_HEIGHT_VH_DESKTOP = 5;
+const HERO_SCROLL_HEIGHT_VH_MOBILE = 3;
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
@@ -22,8 +24,11 @@ export default function Navbar() {
 
   // Listen to scroll for bg change — activate after the hero section is passed
   useEffect(() => {
+    const heroVh = window.innerWidth < MOBILE_BREAKPOINT
+      ? HERO_SCROLL_HEIGHT_VH_MOBILE
+      : HERO_SCROLL_HEIGHT_VH_DESKTOP;
     const onScroll = () =>
-      setScrolled(window.scrollY > window.innerHeight * HERO_SCROLL_HEIGHT_VH);
+      setScrolled(window.scrollY > window.innerHeight * heroVh);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);

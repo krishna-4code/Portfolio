@@ -46,7 +46,11 @@ export default function SmoothScroll({
         duration: 1.2,
         easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
         smoothWheel: true,
-        touchMultiplier: 1.5,
+        // Touch stays native on mobile (no synthetic smoothing) and maps
+        // 1:1 with the finger so the scrolly animation scrubs naturally.
+        syncTouch: false,
+        touchMultiplier: 1,
+        wheelMultiplier: 1,
       }}
     >
       <AnchorScrollHandler />

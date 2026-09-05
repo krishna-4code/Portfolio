@@ -1,7 +1,7 @@
 "use client";
 
-import { motion, useInView } from "framer-motion";
-import { useRef } from "react";
+import { AnimatePresence, motion, useInView } from "framer-motion";
+import { useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { SITE } from "@/lib/site";
 
@@ -39,23 +39,46 @@ const CONTACT_ITEMS = [
 export default function Contact() {
   const ref = useRef<HTMLElement>(null);
   const inView = useInView(ref, { once: true, margin: "-100px" });
+  const [activeImage, setActiveImage] = useState<string | null>(null);
 
   return (
     <section
       ref={ref}
       id="contact"
-      className="relative bg-[#0d0d0d]/75 py-28 md:py-40 px-6 md:px-14 lg:px-20"
+      className="relative bg-black py-28 md:py-40 px-6 md:px-14 lg:px-20 overflow-hidden"
     >
+      {/* Full-section background image tied to hovered strip */}
+      <AnimatePresence>
+        {activeImage && (
+          <motion.div
+            key={activeImage}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+            aria-hidden="true"
+            className="absolute inset-0"
+            style={{
+              backgroundImage: `url(${activeImage})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+            }}
+          >
+            <div className="absolute inset-0 bg-black/75" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Subtle top divider */}
       <div
-        className="absolute top-0 left-0 right-0 h-px"
+        className="absolute top-0 left-0 right-0 h-px z-10"
         style={{
           background:
             "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.06) 30%, rgba(255,255,255,0.06) 70%, transparent 100%)",
         }}
       />
 
-      <div className="max-w-7xl mx-auto">
+      <div className="relative z-10 max-w-7xl mx-auto">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 40 }}
@@ -96,16 +119,17 @@ export default function Contact() {
           initial={{ opacity: 0, y: 60 }}
           animate={inView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.85, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
-          className="relative w-full h-[480px] md:h-[540px] rounded-3xl border border-white/10 bg-[#111113]/80 backdrop-blur-xl overflow-hidden shadow-[0_24px_60px_-15px_rgba(0,0,0,0.85)]"
+          className="relative w-full h-[432px] md:h-[486px] rounded-3xl border border-white/10 bg-[#0e0e10] overflow-hidden shadow-[0_24px_60px_-15px_rgba(0,0,0,0.9)]"
         >
           <FlowingMenu
             items={CONTACT_ITEMS}
             speed={14}
             textColor="#ffffff"
-            bgColor="transparent"
+            bgColor="#0e0e10"
             marqueeBgColor="#e8ff3e"
             marqueeTextColor="#0d0d0d"
             borderColor="rgba(255, 255, 255, 0.08)"
+            onHover={(item) => setActiveImage(item ? item.image : null)}
           />
         </motion.div>
       </div>

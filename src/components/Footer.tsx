@@ -11,7 +11,7 @@ export default function Footer() {
   return (
     <footer
       ref={ref}
-      className="relative bg-[#0d0d0d]/75 overflow-hidden"
+      className="relative bg-black overflow-hidden"
     >
       {/* Top border */}
       <div

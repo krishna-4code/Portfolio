@@ -18,6 +18,7 @@ export interface FlowingMenuProps {
   marqueeBgColor?: string;
   marqueeTextColor?: string;
   borderColor?: string;
+  onHover?: (item: MenuItemData | null) => void;
 }
 
 interface MenuItemProps extends MenuItemData {
@@ -26,6 +27,7 @@ interface MenuItemProps extends MenuItemData {
   marqueeBgColor: string;
   marqueeTextColor: string;
   borderColor: string;
+  onHover?: (item: MenuItemData | null) => void;
 }
 
 function MenuItem({
@@ -37,6 +39,7 @@ function MenuItem({
   marqueeBgColor,
   marqueeTextColor,
   borderColor,
+  onHover,
 }: MenuItemProps) {
   const itemRef = useRef<HTMLDivElement>(null);
   const marqueeRef = useRef<HTMLDivElement>(null);
@@ -124,6 +127,8 @@ function MenuItem({
     const y = ev.clientY - rect.top;
     const edge = findClosestEdge(x, y, rect.width, rect.height);
 
+    onHover?.({ link, text, image });
+
     gsap
       .timeline({ defaults: animationDefaults })
       .set(marqueeRef.current, { y: edge === "top" ? "-101%" : "101%" }, 0)
@@ -142,6 +147,8 @@ function MenuItem({
     const x = ev.clientX - rect.left;
     const y = ev.clientY - rect.top;
     const edge = findClosestEdge(x, y, rect.width, rect.height);
+
+    onHover?.(null);
 
     gsap
       .timeline({ defaults: animationDefaults })
@@ -204,6 +211,7 @@ export default function FlowingMenu({
   marqueeBgColor = "#fff",
   marqueeTextColor = "#120F17",
   borderColor = "#fff",
+  onHover,
 }: FlowingMenuProps) {
   return (
     <div className="menu-wrap" style={{ backgroundColor: bgColor }}>
@@ -217,6 +225,7 @@ export default function FlowingMenu({
             marqueeBgColor={marqueeBgColor}
             marqueeTextColor={marqueeTextColor}
             borderColor={borderColor}
+            onHover={onHover}
           />
         ))}
       </nav>

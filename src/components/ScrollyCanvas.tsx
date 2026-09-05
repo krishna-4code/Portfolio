@@ -4,20 +4,32 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useMotionValue, useSpring, useTransform, motion } from "framer-motion";
 import { useLenis } from "lenis/react";
 import Overlay from "./Overlay";
+import TechBackground from "./TechBackground";
 
 // ─────────────────────────────────────────────
 // CONFIG
 // ─────────────────────────────────────────────
-const TOTAL_FRAMES = 240;
-const SCROLL_HEIGHT = "500vh"; // Cinematic scroll distance
-const FRAME_PREFIX = "/hero-frames/frame_";
+const TOTAL_FRAMES = 300;
+const SCROLL_HEIGHT_DESKTOP = "500vh";
+const SCROLL_HEIGHT_MOBILE = "300vh";
+const FRAME_PREFIX = "/newframes/frame_";
 const FRAME_EXT = ".webp";
 const VIDEO_BG_COLOR = "#08070a";
+const MOBILE_BREAKPOINT = 768;
+
+function isMobile(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.innerWidth < MOBILE_BREAKPOINT;
+}
+
+function getScrollHeight(): string {
+  return isMobile() ? SCROLL_HEIGHT_MOBILE : SCROLL_HEIGHT_DESKTOP;
+}
 
 /**
- * Generates the zero-padded file path for a given frame index (0..239).
- * E.g., index 0 -> "/hero-frames/frame_0001.webp"
- */
+   * Generates the zero-padded file path for a given frame index (0..299).
+   * E.g., index 0 -> "/newframes/frame_0001.webp"
+   */
 function getFramePath(index: number): string {
   const num = String(index + 1).padStart(4, "0");
   return `${FRAME_PREFIX}${num}${FRAME_EXT}`;
@@ -32,13 +44,15 @@ export default function ScrollyCanvas() {
 
   const [isReady, setIsReady] = useState(false);
   const [loadPct, setLoadPct] = useState(0);
+  const [scrollHeight, setScrollHeight] = useState(getScrollHeight);
+  const [isHeroVisible, setIsHeroVisible] = useState(true);
 
   // Motion values to synchronize Overlay beats and vignette with Lenis scroll
   const rawProgress = useMotionValue(0);
   const smoothProgress = useSpring(rawProgress, {
-    stiffness: 120,
-    damping: 30,
-    mass: 0.6,
+    stiffness: 90,
+    damping: 34,
+    mass: 0.65,
   });
 
   const vignetteOpacity = useTransform(
@@ -153,12 +167,15 @@ export default function ScrollyCanvas() {
 
   /**
    * Resize canvas backing store to match display size multiplied by devicePixelRatio.
+   * Uses lower DPR cap on mobile to reduce GPU memory pressure.
    */
   const handleResize = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // Mobile: cap at 1.5 DPR, desktop: cap at 2 DPR
+    const maxDpr = isMobile() ? 1.5 : 2;
+    const dpr = Math.min(window.devicePixelRatio || 1, maxDpr);
     const width = window.innerWidth;
     const height = window.innerHeight;
 
@@ -173,12 +190,41 @@ export default function ScrollyCanvas() {
     renderFrame(currentProgressRef.current);
   }, [renderFrame]);
 
-  // Handle window resizing
+  // Debounced resize handler
   useEffect(() => {
     handleResize();
-    window.addEventListener("resize", handleResize, { passive: true });
-    return () => window.removeEventListener("resize", handleResize);
+
+    let resizeTimer: ReturnType<typeof setTimeout>;
+    const onResize = () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        setScrollHeight(getScrollHeight());
+        handleResize();
+      }, 150);
+    };
+
+    window.addEventListener("resize", onResize, { passive: true });
+    return () => {
+      clearTimeout(resizeTimer);
+      window.removeEventListener("resize", onResize);
+    };
   }, [handleResize]);
+
+  // IntersectionObserver: pause RAF when hero spacer scrolls out of view
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsHeroVisible(entry.isIntersecting || entry.intersectionRatio > 0);
+      },
+      { threshold: [0, 0.01] }
+    );
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   /**
    * Lenis integration:
@@ -217,26 +263,43 @@ export default function ScrollyCanvas() {
   /**
    * Continuous RAF render loop:
    * Smoothly lerps currentProgress toward targetProgress for uninterrupted
-   * buttery frame rendering.
+   * buttery frame rendering. Pauses when hero is off-screen to save battery.
    */
   useEffect(() => {
     let lastRenderedProgress = -1;
+    let lastFrameTime = -1;
+    // Time constant of the exponential smoothing (≈80ms). Frame-rate
+    // independent, so the glide feels identical on 60Hz / 120Hz / 144Hz
+    // displays and stays liquid even with Lenis inertia.
+    const SMOOTHING_TAU_MS = 80;
 
-    const tick = () => {
+    const tick = (now: number) => {
+      // Skip rendering when hero is scrolled off-screen
+      if (!isHeroVisible) {
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      // Normalize smoothing factor against the actual frame delta
+      if (lastFrameTime === -1) lastFrameTime = now;
+      const dt = Math.min(now - lastFrameTime, 50); // clamp tab-switch gaps
+      lastFrameTime = now;
+      const alpha = 1 - Math.exp(-dt / SMOOTHING_TAU_MS);
+
       const target = targetProgressRef.current;
       let curr = currentProgressRef.current;
 
-      // Fine micro-lerp to guarantee liquid inertia transitions
+      // Frame-rate independent micro-lerp for liquid inertia transitions
       const diff = target - curr;
-      if (Math.abs(diff) > 0.00005) {
-        curr += diff * 0.25;
+      if (Math.abs(diff) > 0.00002) {
+        curr += diff * alpha;
       } else {
         curr = target;
       }
       currentProgressRef.current = curr;
 
       // Redraw whenever progress shifts
-      if (Math.abs(curr - lastRenderedProgress) > 0.00002) {
+      if (Math.abs(curr - lastRenderedProgress) > 0.00001) {
         renderFrame(curr);
         lastRenderedProgress = curr;
       }
@@ -248,13 +311,14 @@ export default function ScrollyCanvas() {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [renderFrame]);
+  }, [renderFrame, isHeroVisible]);
 
   /**
    * Preload and off-thread decode frames with priority scheduling:
    * 1. Frame 0 decodes immediately and renders first paint instantly.
    * 2. Keyframes distributed across the video timeline load next.
    * 3. Remaining frames load concurrently in worker batches.
+   *    Mobile uses fewer workers to reduce memory/bandwidth pressure.
    */
   useEffect(() => {
     let isCancelled = false;
@@ -322,8 +386,8 @@ export default function ScrollyCanvas() {
 
       const queue = [...keyframes, ...remaining];
 
-      // Concurrent batch loading pool (concurrency = 8)
-      const CONCURRENCY = 8;
+      // Mobile: 4 concurrent workers, Desktop: 8
+      const CONCURRENCY = isMobile() ? 4 : 8;
       let currentIndex = 0;
 
       const runWorker = async () => {
@@ -374,6 +438,8 @@ export default function ScrollyCanvas() {
           />
         </motion.div>
 
+        <TechBackground />
+
         {/* Text beats */}
         <div className="pointer-events-auto">
           <Overlay scrollYProgress={smoothProgress} />
@@ -410,7 +476,7 @@ export default function ScrollyCanvas() {
       <div
         ref={containerRef}
         className="relative"
-        style={{ height: SCROLL_HEIGHT }}
+        style={{ height: scrollHeight }}
         aria-hidden="true"
       />
     </>

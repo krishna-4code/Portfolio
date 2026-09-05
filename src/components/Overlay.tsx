@@ -57,9 +57,9 @@ const SECTIONS: Section[] = [
 
 // Alignment helper
 const alignClasses: Record<Section["align"], string> = {
-  center: "items-center text-center px-8",
-  left:   "items-start text-left pl-10 md:pl-20 lg:pl-28",
-  right:  "items-end text-right pr-10 md:pr-20 lg:pr-28",
+  center: "items-center text-center px-5 sm:px-8",
+  left:   "items-start text-left pl-5 pr-5 sm:pl-10 sm:pr-10 md:pl-20 lg:pl-28",
+  right:  "items-end text-right pr-5 pl-5 sm:pr-10 sm:pl-10 md:pr-20 lg:pr-28",
 };
 
 // ─────────────────────────────────────────────
